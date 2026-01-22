@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import YAML from "yaml";
-import type { HambugsyConfig } from "../../core/types.js";
+import type { HambugsyConfig, SupportedLanguage } from "../../core/types.js";
 
 interface InitOptions {
   language?: string;
@@ -20,10 +20,12 @@ export const initCommand = new Command("init")
 
     try {
       const config: HambugsyConfig = {
-        language: (options.language as HambugsyConfig["language"]) ?? "java",
+        language: (options.language as SupportedLanguage) ?? "java",
         sourceDir: "src/main",
         testDir: "src/test",
         excludePatterns: ["**/node_modules/**", "**/build/**", "**/target/**"],
+        outputFormat: "console",
+        copilotEnabled: false,
       };
 
       const yamlContent = YAML.stringify(config);

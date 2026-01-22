@@ -1,19 +1,22 @@
-import type { AnalysisResult } from "../../core/types.js";
+import type { DiagnosticResult } from "../../core/types.js";
 
 export class JsonOutput {
-  formatResult(result: AnalysisResult): string {
+  formatResult(result: DiagnosticResult): string {
     return JSON.stringify(result, null, 2);
   }
 
-  formatResults(results: AnalysisResult[]): string {
+  formatResults(results: DiagnosticResult[]): string {
     return JSON.stringify(
       {
         results,
         summary: {
           total: results.length,
-          testBugs: results.filter((r) => r.verdict === "test").length,
-          codeBugs: results.filter((r) => r.verdict === "code").length,
-          unknown: results.filter((r) => r.verdict === "unknown").length,
+          testIssues: results.filter(
+            (r) => r.verdict.type === "OUTDATED_TEST" || r.verdict.type === "FLAKY_TEST"
+          ).length,
+          codeBugs: results.filter((r) => r.verdict.type === "CODE_BUG").length,
+          passed: results.filter((r) => r.verdict.type === "PASSED").length,
+          environmentIssues: results.filter((r) => r.verdict.type === "ENVIRONMENT_ISSUE").length,
         },
       },
       null,
@@ -21,7 +24,7 @@ export class JsonOutput {
     );
   }
 
-  print(results: AnalysisResult[]): void {
+  print(results: DiagnosticResult[]): void {
     console.log(this.formatResults(results));
   }
 }

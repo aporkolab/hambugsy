@@ -1,14 +1,14 @@
 import chalk from "chalk";
-import type { AnalysisResult, Verdict } from "../../core/types.js";
+import type { DiagnosticResult, Verdict } from "../../core/types.js";
 
 export class ConsoleOutput {
-  printResult(result: AnalysisResult): void {
+  printResult(result: DiagnosticResult): void {
     const verdictColor = this.getVerdictColor(result.verdict);
     const verdictLabel = this.getVerdictLabel(result.verdict);
 
     console.log();
-    console.log(chalk.bold(`Test: ${result.failure.testName}`));
-    console.log(chalk.gray(`File: ${result.failure.testFile}`));
+    console.log(chalk.bold(`Test: ${result.testName}`));
+    console.log(chalk.gray(`File: ${result.testFile}`));
     console.log();
     console.log(`Verdict: ${verdictColor(verdictLabel)}`);
     console.log(`Confidence: ${this.formatConfidence(result.confidence)}`);
@@ -19,42 +19,53 @@ export class ConsoleOutput {
     if (result.suggestions.length > 0) {
       console.log();
       console.log(chalk.gray("Suggestions:"));
-      result.suggestions.forEach((s, i) => {
+      result.suggestions.forEach((s: string, i: number) => {
         console.log(`  ${i + 1}. ${s}`);
       });
     }
     console.log();
   }
 
-  printSummary(results: AnalysisResult[]): void {
-    const testBugs = results.filter((r) => r.verdict === "test").length;
-    const codeBugs = results.filter((r) => r.verdict === "code").length;
-    const unknown = results.filter((r) => r.verdict === "unknown").length;
+  printSummary(results: DiagnosticResult[]): void {
+    const testBugs = results.filter((r) => r.verdict.type === "OUTDATED_TEST" || r.verdict.type === "FLAKY_TEST").length;
+    const codeBugs = results.filter((r) => r.verdict.type === "CODE_BUG").length;
+    const unknown = results.filter((r) => r.verdict.type === "ENVIRONMENT_ISSUE").length;
+    const passed = results.filter((r) => r.verdict.type === "PASSED").length;
 
     console.log(chalk.bold("\n--- Summary ---"));
     console.log(`Total failures analyzed: ${results.length}`);
-    console.log(chalk.yellow(`Test bugs: ${testBugs}`));
+    console.log(chalk.yellow(`Test issues: ${testBugs}`));
     console.log(chalk.red(`Code bugs: ${codeBugs}`));
-    console.log(chalk.gray(`Unknown: ${unknown}`));
+    console.log(chalk.green(`Passed: ${passed}`));
+    console.log(chalk.gray(`Environment/Unknown: ${unknown}`));
   }
 
   private getVerdictColor(verdict: Verdict) {
-    switch (verdict) {
-      case "test":
+    switch (verdict.type) {
+      case "OUTDATED_TEST":
+      case "FLAKY_TEST":
         return chalk.yellow;
-      case "code":
+      case "CODE_BUG":
         return chalk.red;
+      case "PASSED":
+        return chalk.green;
       default:
         return chalk.gray;
     }
   }
 
   private getVerdictLabel(verdict: Verdict): string {
-    switch (verdict) {
-      case "test":
-        return "TEST IS BUGGY";
-      case "code":
-        return "CODE IS BUGGY";
+    switch (verdict.type) {
+      case "OUTDATED_TEST":
+        return "OUTDATED TEST";
+      case "FLAKY_TEST":
+        return "FLAKY TEST";
+      case "CODE_BUG":
+        return "CODE BUG";
+      case "PASSED":
+        return "PASSED";
+      case "ENVIRONMENT_ISSUE":
+        return "ENVIRONMENT ISSUE";
       default:
         return "UNKNOWN";
     }

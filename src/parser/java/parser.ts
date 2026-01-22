@@ -10,6 +10,8 @@ export class JavaTestParser {
       totalTests: 0,
       passedTests: 0,
       failedTests: 0,
+      skippedTests: 0,
+      duration: 0,
     };
   }
 

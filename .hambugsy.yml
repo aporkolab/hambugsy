@@ -1,0 +1,208 @@
+# Hambugsy Configuration
+# Place this file in your project root as .hambugsy.yml
+
+version: 1
+
+# =============================================================================
+# FILE PATTERNS
+# =============================================================================
+
+patterns:
+  # Source code patterns (glob)
+  source:
+    - "src/**/*.java"
+    - "src/**/*.ts"
+    - "src/**/*.tsx"
+    - "src/**/*.py"
+    - "lib/**/*.java"
+  
+  # Test file patterns (glob)
+  test:
+    - "test/**/*.java"
+    - "tests/**/*.java"
+    - "**/*.test.ts"
+    - "**/*.spec.ts"
+    - "**/*_test.py"
+    - "test_*.py"
+  
+  # Custom test-to-source mappings (optional)
+  mapping:
+    # Integration tests
+    - test: "**/*IT.java"
+      source: "src/main/java/**/*.java"
+    
+    # E2E tests
+    - test: "**/*.e2e.ts"
+      source: "src/**/*.ts"
+
+# =============================================================================
+# ANALYSIS SETTINGS
+# =============================================================================
+
+analysis:
+  # How far back to look in git history (days)
+  git_history_days: 90
+  
+  # Minimum confidence to report a verdict (0.0 - 1.0)
+  confidence_threshold: 0.7
+  
+  # Include detailed AI explanation in output
+  explain: true
+  
+  # Language-specific settings
+  languages:
+    java:
+      test_frameworks:
+        - junit5
+        - junit4
+        - testng
+      naming_convention: "test{MethodName}"  # or "{methodName}Test"
+    
+    typescript:
+      test_frameworks:
+        - jest
+        - vitest
+        - mocha
+      naming_convention: "{methodName}.test.ts"
+    
+    python:
+      test_frameworks:
+        - pytest
+        - unittest
+      naming_convention: "test_{method_name}"
+
+# =============================================================================
+# IGNORE PATTERNS
+# =============================================================================
+
+ignore:
+  # Files to ignore completely
+  files:
+    - "**/generated/**"
+    - "**/node_modules/**"
+    - "**/build/**"
+    - "**/dist/**"
+    - "**/*.d.ts"
+    - "**/*.min.js"
+  
+  # Test files to skip
+  tests:
+    - "**/*.mock.ts"
+    - "**/*Mock*.java"
+    - "**/fixtures/**"
+  
+  # Methods to skip (common utility methods)
+  methods:
+    - "toString"
+    - "hashCode"
+    - "equals"
+    - "compareTo"
+    - "main"
+
+# =============================================================================
+# VERDICT WEIGHTS
+# =============================================================================
+
+# Fine-tune verdict decisions for your project
+weights:
+  # Higher = more likely to say "update test" instead of "fix code"
+  # 0.5 = neutral, 0.7 = prefer test updates, 0.3 = prefer code fixes
+  prefer_test_update: 0.6
+  
+  # How much to trust commit messages for intent detection
+  # Higher = trust "feat:" and "fix:" prefixes more
+  trust_commit_message: 0.8
+  
+  # Minimum time difference (hours) to consider "code changed after test"
+  time_threshold_hours: 24
+
+# =============================================================================
+# CI/CD INTEGRATION
+# =============================================================================
+
+ci:
+  # Exit with error code if code bugs are found
+  fail_on_bugs: true
+  
+  # Exit with error code if outdated tests are found
+  fail_on_outdated_tests: false
+  
+  # Exit with error code if flaky tests are detected
+  fail_on_flaky: false
+  
+  # Generate report artifact
+  report:
+    enabled: true
+    format: "markdown"  # json, markdown, html
+    path: "./hambugsy-report.md"
+  
+  # GitHub Actions specific
+  github:
+    # Add annotations to PRs
+    annotations: true
+    
+    # Comment summary on PR
+    comment_on_pr: true
+    
+    # Label PRs with issues
+    add_labels: true
+  
+  # GitLab CI specific
+  gitlab:
+    # Generate code quality report
+    code_quality_report: true
+
+# =============================================================================
+# COPILOT SETTINGS
+# =============================================================================
+
+copilot:
+  # Timeout for Copilot CLI calls (seconds)
+  timeout: 30
+  
+  # Number of retries on failure
+  retries: 3
+  
+  # Rate limiting (requests per minute)
+  rate_limit: 30
+  
+  # Temperature for AI responses (0.0 - 1.0)
+  # Lower = more deterministic, Higher = more creative
+  temperature: 0.3
+
+# =============================================================================
+# OUTPUT SETTINGS
+# =============================================================================
+
+output:
+  # Use colors in terminal output
+  colors: true
+  
+  # Show progress spinner
+  spinner: true
+  
+  # Verbosity level: quiet, normal, verbose, debug
+  verbosity: "normal"
+  
+  # Max width for terminal output
+  max_width: 120
+  
+  # Show timing information
+  show_timing: true
+
+# =============================================================================
+# CACHING
+# =============================================================================
+
+cache:
+  # Enable caching for faster repeated analysis
+  enabled: true
+  
+  # Cache directory (relative to project root)
+  directory: ".hambugsy-cache"
+  
+  # Cache TTL in hours
+  ttl_hours: 24
+  
+  # Max cache size in MB
+  max_size_mb: 100

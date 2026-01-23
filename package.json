@@ -1,7 +1,7 @@
 {
   "name": "hambugsy",
-  "version": "0.1.0",
-  "description": "CLI tool for diagnosing test failures - determines if the test or the code is buggy",
+  "version": "1.0.0",
+  "description": "The CLI tool that tells you WHO is wrong: your test or your code. Uses GitHub Copilot CLI for AI-powered test failure diagnosis.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -11,16 +11,33 @@
     "dev": "tsx src/index.ts",
     "build": "tsup",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "cli",
     "testing",
+    "test-failure",
     "diagnostics",
-    "debugging"
+    "debugging",
+    "github-copilot",
+    "ai",
+    "java",
+    "junit",
+    "code-analysis",
+    "developer-tools"
   ],
-  "author": "",
+  "author": "APorkolab",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/APorkolab/hambugsy.git"
+  },
+  "homepage": "https://github.com/APorkolab/hambugsy#readme",
+  "bugs": {
+    "url": "https://github.com/APorkolab/hambugsy/issues"
+  },
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",

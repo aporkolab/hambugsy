@@ -140,6 +140,13 @@ hambugsy analyze ./src --filter=tests     # Only show outdated tests
 hambugsy analyze ./src --format=console   # Pretty terminal output (default)
 hambugsy analyze ./src --format=json      # JSON for CI/CD integration
 hambugsy analyze ./src --format=github    # GitHub Actions annotations
+hambugsy analyze ./src --format=markdown  # Markdown report
+
+# Filter by test name
+hambugsy analyze ./src --test=testDiscount  # Only analyze tests matching name
+
+# Interactive mode
+hambugsy analyze ./src --interactive      # Confirm each step
 
 # Verbose output
 hambugsy analyze ./src --verbose
@@ -162,6 +169,25 @@ hambugsy suggest ./src --priority=high      # CRITICAL + HIGH
 hambugsy suggest ./src --priority=medium    # All except LOW
 ```
 
+### Fix Command
+
+Automatically fix detected issues.
+
+```bash
+# Auto-fix all detected issues
+hambugsy fix ./src
+
+# Dry run - see what would change without modifying files
+hambugsy fix ./src --dry-run
+
+# Skip confirmation prompts
+hambugsy fix ./src --yes
+
+# Fix only code bugs or only tests
+hambugsy fix ./src --filter=bugs   # Only fix code bugs
+hambugsy fix ./src --filter=tests  # Only fix outdated tests
+```
+
 ### Init Command
 
 Initialize Hambugsy configuration in your project.
@@ -179,8 +205,8 @@ hambugsy init --force  # Overwrite existing config
 | Language | Test Framework | Status |
 |----------|----------------|--------|
 | Java | JUnit 4/5 | ✅ Supported |
-| TypeScript | Jest, Vitest | 📋 Planned |
-| Python | pytest | 📋 Planned |
+| TypeScript/JavaScript | Jest, Vitest, Mocha | ✅ Supported |
+| Python | pytest, unittest | ✅ Supported |
 
 ---
 
@@ -413,10 +439,13 @@ Fix the code in UserService.java - add null check and throw UserNotFoundExceptio
 - [x] Missing test detection (`suggest` command)
 - [x] JSON output format
 - [x] GitHub Actions format
-- [ ] TypeScript/Jest support
-- [ ] Python/pytest support
+- [x] Markdown output format
+- [x] TypeScript/Jest/Vitest support
+- [x] Python/pytest/unittest support
+- [x] Auto-fix mode (`fix` command)
+- [x] Interactive mode (`--interactive`)
+- [x] Test name filter (`--test`)
 - [ ] VS Code extension
-- [ ] Auto-fix mode (`--fix` flag)
 
 ---
 

@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { analyzeCommand } from "./cli/commands/analyze.js";
 import { suggestCommand } from "./cli/commands/suggest.js";
 import { initCommand } from "./cli/commands/init.js";
+import { fixCommand } from "./cli/commands/fix.js";
 
 const program = new Command();
 
@@ -16,5 +17,6 @@ program
 program.addCommand(analyzeCommand);
 program.addCommand(suggestCommand);
 program.addCommand(initCommand);
+program.addCommand(fixCommand);
 
 program.parse();

@@ -65,9 +65,16 @@ export class TypeScriptParser {
   private detectFramework(): void {
     if (this.content.includes("from 'vitest'") || this.content.includes('from "vitest"')) {
       this.detectedFramework = "vitest";
-    } else if (this.content.includes("from 'mocha'") || this.content.includes("describe(") && this.content.includes("chai")) {
+    } else if (
+      this.content.includes("from 'mocha'") ||
+      this.content.includes('from "mocha"') ||
+      this.content.includes("require('mocha')") ||
+      this.content.includes('require("mocha")') ||
+      (this.content.includes("from 'chai'") || this.content.includes('from "chai"'))
+    ) {
       this.detectedFramework = "mocha";
     } else {
+      // Default to jest for files with describe/it/test/expect patterns
       this.detectedFramework = "jest";
     }
   }
@@ -247,6 +254,10 @@ export class TypeScriptParser {
   private extractAssertions(body: string, baseLineNumber: number): Assertion[] {
     const assertions: Assertion[] = [];
 
+    // Helper to match balanced parentheses content (handles one level of nesting)
+    // Matches: content with nested parens like "calculator.add(2, 3)" or simple "5"
+    const balancedParen = "(?:[^()]+|\\([^()]*\\))+";
+
     // Jest/Vitest expect patterns
     const patterns: Array<{
       regex: RegExp;
@@ -255,92 +266,98 @@ export class TypeScriptParser {
     }> = [
       // expect(actual).toBe(expected)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBe\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBe\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "equals",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
       },
       // expect(actual).toEqual(expected)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toEqual\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toEqual\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "equals",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
       },
       // expect(actual).toStrictEqual(expected)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toStrictEqual\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toStrictEqual\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "equals",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
       },
       // expect(condition).toBeTruthy()
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeTruthy\s*\(\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeTruthy\\s*\\(\\s*\\)`, "g"),
         type: "truthy",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: "truthy" }),
       },
       // expect(condition).toBeFalsy()
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeFalsy\s*\(\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeFalsy\\s*\\(\\s*\\)`, "g"),
         type: "truthy",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: "falsy" }),
       },
       // expect(value).toBeNull()
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeNull\s*\(\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeNull\\s*\\(\\s*\\)`, "g"),
         type: "equals",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: "null" }),
       },
       // expect(value).toBeUndefined()
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeUndefined\s*\(\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeUndefined\\s*\\(\\s*\\)`, "g"),
         type: "equals",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: "undefined" }),
       },
       // expect(value).toBeDefined()
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeDefined\s*\(\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeDefined\\s*\\(\\s*\\)`, "g"),
         type: "truthy",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: "defined" }),
       },
       // expect(fn).toThrow() or expect(fn).toThrow(Error)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toThrow\s*\(\s*([^)]*)?\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toThrow\\s*\\(\\s*([^)]*)?\\s*\\)`, "g"),
         type: "throws",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() || "Error" }),
       },
       // expect(array).toContain(item)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toContain\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toContain\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "contains",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
       },
       // expect(string).toMatch(pattern)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toMatch\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toMatch\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "contains",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
       },
       // expect(value).toBeGreaterThan(number)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeGreaterThan\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeGreaterThan\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "other",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: `> ${m[2]?.trim()}` }),
       },
       // expect(value).toBeLessThan(number)
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.toBeLessThan\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeLessThan\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "other",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: `< ${m[2]?.trim()}` }),
       },
       // expect(fn).rejects.toThrow() - async throws
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.rejects\s*\.toThrow\s*\(\s*([^)]*)?\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.rejects\\s*\\.toThrow\\s*\\(\\s*([^)]*)?\\s*\\)`, "g"),
         type: "throws",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() || "Error" }),
       },
       // expect(fn).resolves.toBe() - async resolves
       {
-        regex: /expect\s*\(\s*([^)]+)\s*\)\s*\.resolves\s*\.toBe\s*\(\s*([^)]+)\s*\)/g,
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.resolves\\s*\\.toBe\\s*\\(\\s*(${balancedParen})\\s*\\)`, "g"),
         type: "equals",
+        extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
+      },
+      // expect().toBeInstanceOf()
+      {
+        regex: new RegExp(`expect\\s*\\(\\s*(${balancedParen})\\s*\\)\\s*\\.toBeInstanceOf\\s*\\(\\s*(\\w+)\\s*\\)`, "g"),
+        type: "other",
         extractor: (m) => ({ actual: m[1]?.trim() ?? null, expected: m[2]?.trim() ?? null }),
       },
     ];

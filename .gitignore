@@ -11,3 +11,5 @@ coverage/
 
 # Claude Code
 .claude/
+vscode-extension/out/
+vscode-extension/*.vsix

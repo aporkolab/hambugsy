@@ -101,7 +101,12 @@ export class PythonParser {
       const returnType = match[6] ?? "None";
 
       const startIndex = match.index;
-      const lineNumber = this.getLineNumber(startIndex);
+      // The match.index points to the newline before the line, so add 1
+      const matchLineNumber = this.getLineNumber(startIndex) + 1;
+
+      // Account for decorator lines to get the actual def line
+      const decoratorLines = (decoratorsBlock.match(/\n/g) || []).length;
+      const lineNumber = matchLineNumber + decoratorLines;
 
       // Extract decorators
       const decorators = this.extractDecorators(decoratorsBlock);
@@ -110,6 +115,7 @@ export class PythonParser {
       const isTest = this.isTestMethod(name, decorators);
 
       // Find the method body by tracking indentation
+      // Body starts AFTER the def line, so we need indent of body (baseIndent + standard indent)
       const { body, endLine } = this.extractMethodBody(lineNumber, indent.length);
 
       methods.push({

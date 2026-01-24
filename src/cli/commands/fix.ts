@@ -145,7 +145,7 @@ async function analyzeFiles(
   basePath: string,
   options: FixOptions,
   copilot: CopilotBridge,
-  spinner: ReturnType<typeof ora>
+  _spinner: ReturnType<typeof ora>
 ): Promise<DiagnosticResult[]> {
   const resolvedPath = resolve(basePath);
   const pattern = options.recursive ? "**/*.{java,ts,tsx,js,jsx,py}" : "*.{java,ts,tsx,js,jsx,py}";

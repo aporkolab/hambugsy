@@ -81,13 +81,14 @@ export class JavaParser {
     const methods: RawMethod[] = [];
 
     // Pattern to find method declarations
-    // Matches: @Test (optional), visibility, return type, method name, parameters
+    // Matches: @Test (optional with other annotations), visibility, return type, method name, parameters
+    // The pattern allows for multiple annotations between @Test and the method signature
     const methodPattern =
-      /(@Test(?:\s*\([^)]*\))?\s+)?(public|protected|private)?\s*(static\s+)?(\w+(?:<[^>]+>)?)\s+(\w+)\s*\(([^)]*)\)\s*(?:throws\s+[\w,\s]+)?\s*\{/g;
+      /(@Test(?:\s*\([^)]*\))?(?:\s+@\w+(?:\s*\([^)]*\))?)*\s+)?(public|protected|private)?\s*(static\s+)?(\w+(?:<[^>]+>)?)\s+(\w+)\s*\(([^)]*)\)\s*(?:throws\s+[\w,\s]+)?\s*\{/g;
 
     let match;
     while ((match = methodPattern.exec(this.content)) !== null) {
-      const isTest = !!match[1];
+      const isTest = match[1]?.includes("@Test") ?? false;
       const visibility = match[2] ?? "package";
       const returnType = match[4] ?? "void";
       const name = match[5];

@@ -3,9 +3,13 @@ import ora, { Ora } from "ora";
 import chalk from "chalk";
 import { glob } from "glob";
 import { resolve, relative } from "path";
+import { createInterface } from "readline";
 import { ConsoleReporter } from "../output/console.js";
 import { JsonOutput } from "../output/json.js";
-import { JavaParser, JavaParseResult } from "../../parser/java/parser.js";
+import { MarkdownReporter } from "../output/markdown.js";
+import { JavaParser } from "../../parser/java/parser.js";
+import { TypeScriptParser } from "../../parser/typescript/parser.js";
+import { PythonParser } from "../../parser/python/parser.js";
 import { CopilotBridge, getCopilotBridge, CopilotError } from "../../services/copilot.js";
 import { GitService, getGitService } from "../../services/git.js";
 import { VerdictEngine, createVerdictEngine } from "../../verdict/engine.js";
@@ -29,9 +33,11 @@ import type { Commit } from "../../services/git.js";
 interface AnalyzeOptions {
   recursive?: boolean;
   filter?: "bugs" | "tests" | "all";
-  format?: "console" | "json" | "github";
+  format?: "console" | "json" | "github" | "markdown";
   verbose?: boolean;
   confidence?: string;
+  test?: string;
+  interactive?: boolean;
 }
 
 interface ProgressInfo {
@@ -55,7 +61,7 @@ export const analyzeCommand = new Command("analyze")
   )
   .option(
     "--format <format>",
-    "Output format: console, json, or github",
+    "Output format: console, json, github, or markdown",
     "console"
   )
   .option("-v, --verbose", "Show detailed analysis")
@@ -64,6 +70,8 @@ export const analyzeCommand = new Command("analyze")
     "Minimum confidence threshold (0-1)",
     "0.5"
   )
+  .option("-t, --test <name>", "Filter by specific test name")
+  .option("-i, --interactive", "Interactive mode - confirm each step")
   .action(async (path: string, options: AnalyzeOptions) => {
     const exitCode = await runAnalysis(path, options);
     process.exit(exitCode);
@@ -106,12 +114,21 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     const files = await discoverFiles(path, options.recursive ?? true);
 
     if (files.length === 0) {
-      spinner.warn("No Java files found");
+      spinner.warn("No source files found (Java, TypeScript, JavaScript, Python)");
       console.log(chalk.gray(`Searched in: ${resolve(path)}`));
       return 0;
     }
 
-    spinner.succeed(`Found ${files.length} Java file(s)`);
+    spinner.succeed(`Found ${files.length} source file(s)`);
+
+    // 4. Interactive mode confirmation
+    if (options.interactive) {
+      const proceed = await confirm("Proceed with analysis? [Y/n] ");
+      if (!proceed) {
+        console.log(chalk.yellow("Analysis cancelled."));
+        return 0;
+      }
+    }
 
     // 4. Analyze files
     const results = await analyzeFiles(
@@ -120,7 +137,8 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
       git,
       verdictEngine,
       spinner,
-      options.verbose ?? false
+      options.verbose ?? false,
+      options.test
     );
 
     // 5. Filter results
@@ -172,7 +190,10 @@ async function discoverFiles(
   recursive: boolean
 ): Promise<string[]> {
   const resolvedPath = resolve(basePath);
-  const pattern = recursive ? "**/*.java" : "*.java";
+  // Support Java, TypeScript/JavaScript, and Python
+  const pattern = recursive
+    ? "**/*.{java,ts,tsx,js,jsx,py}"
+    : "*.{java,ts,tsx,js,jsx,py}";
 
   const files = await glob(pattern, {
     cwd: resolvedPath,
@@ -182,7 +203,10 @@ async function discoverFiles(
       "**/build/**",
       "**/target/**",
       "**/out/**",
+      "**/dist/**",
       "**/.git/**",
+      "**/__pycache__/**",
+      "**/*.d.ts",
     ],
   });
 
@@ -193,17 +217,47 @@ async function discoverFiles(
 // File Analysis
 // ============================================================================
 
+interface ParseResult {
+  tests: TestCase[];
+  methods: SourceMethod[];
+}
+
+async function parseFile(filePath: string): Promise<ParseResult> {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+
+  switch (ext) {
+    case "java":
+      const javaParser = new JavaParser(filePath);
+      return javaParser.parseFile();
+
+    case "ts":
+    case "tsx":
+    case "js":
+    case "jsx":
+      const tsParser = new TypeScriptParser(filePath);
+      return tsParser.parseFile();
+
+    case "py":
+      const pyParser = new PythonParser(filePath);
+      return pyParser.parseFile();
+
+    default:
+      return { tests: [], methods: [] };
+  }
+}
+
 async function analyzeFiles(
   files: string[],
   copilot: CopilotBridge,
   git: GitService,
   verdictEngine: VerdictEngine,
   spinner: Ora,
-  verbose: boolean
+  verbose: boolean,
+  testNameFilter?: string
 ): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = [];
-  const testFiles: Map<string, JavaParseResult> = new Map();
-  const sourceFiles: Map<string, JavaParseResult> = new Map();
+  const testFiles: Map<string, ParseResult> = new Map();
+  const sourceFiles: Map<string, ParseResult> = new Map();
 
   // Phase 1: Parse all files
   spinner.start(`Parsing ${files.length} files...`);
@@ -219,12 +273,19 @@ async function analyzeFiles(
     spinner.text = `Parsing [${progress.current}/${progress.total}] ${progress.file}`;
 
     try {
-      const parser = new JavaParser(file);
-      const parseResult = await parser.parseFile();
+      const parseResult = await parseFile(file);
 
       // Categorize as test or source file
       if (parseResult.tests.length > 0) {
-        testFiles.set(file, parseResult);
+        // Apply test name filter if provided
+        if (testNameFilter) {
+          parseResult.tests = parseResult.tests.filter((t) =>
+            t.name.toLowerCase().includes(testNameFilter.toLowerCase())
+          );
+        }
+        if (parseResult.tests.length > 0) {
+          testFiles.set(file, parseResult);
+        }
       }
       if (parseResult.methods.length > 0) {
         sourceFiles.set(file, parseResult);
@@ -300,8 +361,8 @@ async function analyzeFiles(
 // ============================================================================
 
 function correlateTestsToMethods(
-  testFiles: Map<string, JavaParseResult>,
-  sourceFiles: Map<string, JavaParseResult>
+  testFiles: Map<string, ParseResult>,
+  sourceFiles: Map<string, ParseResult>
 ): TestSourcePair[] {
   const pairs: TestSourcePair[] = [];
 
@@ -572,6 +633,11 @@ function outputResults(results: DiagnosticResult[], options: AnalyzeOptions): vo
       outputGitHubActions(results);
       break;
 
+    case "markdown":
+      const mdReporter = new MarkdownReporter();
+      mdReporter.print(results);
+      break;
+
     case "console":
     default:
       if (results.length === 0) {
@@ -583,6 +649,25 @@ function outputResults(results: DiagnosticResult[], options: AnalyzeOptions): vo
       reporter.print(results);
       break;
   }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+async function confirm(question: string): Promise<boolean> {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      const normalized = answer.toLowerCase().trim();
+      resolve(normalized === "" || normalized === "y" || normalized === "yes");
+    });
+  });
 }
 
 function outputGitHubActions(results: DiagnosticResult[]): void {

@@ -1,0 +1,132 @@
+{
+  "name": "hambugsy-vscode",
+  "displayName": "Hambugsy - Test Failure Diagnostics",
+  "description": "The CLI that tells you WHO is wrong: your test or your code",
+  "version": "1.0.0",
+  "publisher": "APorkolab",
+  "icon": "resources/logo-128.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/APorkolab/hambugsy.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Testing",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "test",
+    "testing",
+    "junit",
+    "jest",
+    "pytest",
+    "diagnostics",
+    "copilot"
+  ],
+  "activationEvents": [
+    "onLanguage:java",
+    "onLanguage:typescript",
+    "onLanguage:javascript",
+    "onLanguage:python"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hambugsy.analyzeFile",
+        "title": "Hambugsy: Analyze Current File",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "hambugsy.analyzeWorkspace",
+        "title": "Hambugsy: Analyze Workspace",
+        "icon": "$(search)"
+      },
+      {
+        "command": "hambugsy.suggestTests",
+        "title": "Hambugsy: Suggest Missing Tests",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "hambugsy.fixIssues",
+        "title": "Hambugsy: Fix Issues",
+        "icon": "$(wrench)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "hambugsy.analyzeFile",
+          "when": "editorLangId == java || editorLangId == typescript || editorLangId == javascript || editorLangId == python",
+          "group": "hambugsy"
+        },
+        {
+          "command": "hambugsy.suggestTests",
+          "when": "editorLangId == java || editorLangId == typescript || editorLangId == javascript || editorLangId == python",
+          "group": "hambugsy"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "hambugsy.analyzeFile",
+          "when": "resourceExtname == .java || resourceExtname == .ts || resourceExtname == .js || resourceExtname == .py",
+          "group": "hambugsy"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "hambugsyResults",
+          "name": "Hambugsy Results",
+          "icon": "resources/logo-16.png",
+          "contextualTitle": "Hambugsy"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Hambugsy",
+      "properties": {
+        "hambugsy.autoAnalyze": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically analyze files on save"
+        },
+        "hambugsy.confidenceThreshold": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum confidence threshold for results"
+        },
+        "hambugsy.showInlineHints": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline hints for detected issues"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "dependencies": {
+    "hambugsy": "^1.0.0"
+  }
+}

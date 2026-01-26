@@ -430,6 +430,33 @@ Fix the code in UserService.java - add null check and throw UserNotFoundExceptio
 
 ---
 
+## VS Code Extension
+
+Hambugsy comes with a full VS Code extension for seamless integration.
+
+### Installation
+
+```bash
+# Build and install the extension
+cd vscode-extension
+npm install
+npm run compile
+npm run package
+# Then install the .vsix file in VS Code
+```
+
+### Features
+
+- Right-click context menu on test files
+- Problems panel integration with diagnostics
+- Results tree view in Explorer sidebar
+- Auto-analyze on save (optional)
+- Quick fix suggestions
+
+See [vscode-extension/README.md](./vscode-extension/README.md) for full documentation.
+
+---
+
 ## Roadmap
 
 - [x] Core verdict engine
@@ -445,7 +472,7 @@ Fix the code in UserService.java - add null check and throw UserNotFoundExceptio
 - [x] Auto-fix mode (`fix` command)
 - [x] Interactive mode (`--interactive`)
 - [x] Test name filter (`--test`)
-- [ ] VS Code extension
+- [x] VS Code extension
 
 ---
 

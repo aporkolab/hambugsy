@@ -3,7 +3,7 @@ import ora, { Ora } from "ora";
 import chalk from "chalk";
 import { glob } from "glob";
 import { resolve, relative } from "path";
-import { ConsoleOutput } from "../output/console.js";
+import { ConsoleReporter } from "../output/console.js";
 import { JsonOutput } from "../output/json.js";
 import { JavaParser, JavaParseResult } from "../../parser/java/parser.js";
 import { CopilotBridge, getCopilotBridge, CopilotError } from "../../services/copilot.js";
@@ -574,18 +574,13 @@ function outputResults(results: DiagnosticResult[], options: AnalyzeOptions): vo
 
     case "console":
     default:
-      const consoleOutput = new ConsoleOutput();
-
       if (results.length === 0) {
         console.log(chalk.green("\nNo issues found!"));
         return;
       }
 
-      for (const result of results) {
-        consoleOutput.printResult(result);
-      }
-
-      consoleOutput.printSummary(results);
+      const reporter = new ConsoleReporter();
+      reporter.print(results);
       break;
   }
 }

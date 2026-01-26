@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { Command } from "commander";
 import chalk from "chalk";
 import { analyzeCommand } from "./cli/commands/analyze.js";
@@ -11,9 +9,9 @@ const program = new Command();
 program
   .name("hambugsy")
   .description(
-    chalk.yellow("The CLI that tells you WHO is wrong: your test or your code")
+    chalk.yellow("🍔 The CLI that tells you WHO is wrong: your test or your code")
   )
-  .version("0.1.0");
+  .version("1.0.0");
 
 program.addCommand(analyzeCommand);
 program.addCommand(suggestCommand);

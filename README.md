@@ -4,6 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Built with GitHub Copilot CLI](https://img.shields.io/badge/Built%20with-GitHub%20Copilot%20CLI-blue)](https://github.com/github/gh-copilot)
+[![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 
 ---
 
@@ -28,33 +29,34 @@ Now what? Is the test wrong? Is the code wrong? Did someone change the business 
 ```bash
 $ hambugsy analyze ./src/OrderService.java
 
-🍔 HAMBUGSY - Finding the bug in your stack...
+🍔 HAMBUGSY - Test Failure Diagnostics 🍔
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-┌─────────────────────────────────────────────────────────────────┐
-│  📍 calculateTotal() - line 47                                  │
-│  ├── ❌ Test FAILS: testCalculateTotal_WithDiscount             │
-│  ├── 🔬 Analysis:                                               │
-│  │   • Test expects: 10% discount (written: 2024-03-15)         │
-│  │   • Code applies: 15% discount (changed: 2024-11-22)         │
-│  │   • Git blame: "Updated discount per new pricing policy"     │
-│  │                                                              │
-│  └── 🎯 VERDICT: Code CHANGED → Test OUTDATED                   │
-│      └── 💡 Fix: Update test assertion line 23: 90 → 85         │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  📍 Method: calculateDiscount() @ line 32                          │
+├────────────────────────────────────────────────────────────────────┤
+│  ❌ FAILING TEST: testPremiumDiscount                              │
+│                                                                    │
+│  🔬 ANALYSIS:                                                      │
+│  ├── Test expects: 10% discount (written: 2024-03-15)              │
+│  └── Code applies: 15% discount (changed: 2024-11-22)              │
+│                                                                    │
+│  🎯 VERDICT: 📜 OUTDATED TEST (96%)                                │
+│                                                                    │
+│  💡 RECOMMENDATION:                                                │
+│  - assertEquals(90.0, result);                                     │
+│  + assertEquals(85.0, result);                                     │
+└────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────┐
-│  📍 validateOrder() - line 82                                   │
-│  ├── ❌ Test FAILS: testValidateOrder_EmptyCart                 │
-│  ├── 🔬 Analysis:                                               │
-│  │   • Test expects: throw ValidationException                  │
-│  │   • Code does: returns null (no null check)                  │
-│  │   • No recent changes to this method                         │
-│  │                                                              │
-│  └── 🎯 VERDICT: Test CORRECT → Code has BUG                    │
-│      └── 💡 Fix: Add null check before line 84                  │
-└─────────────────────────────────────────────────────────────────┘
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🐛 Code bugs:        0
+  📜 Outdated tests:   1
+  ✅ Passed:           5
 
-📊 Summary: 1 outdated test, 1 code bug | Time saved: ~45 minutes
+  🚀 Estimated time saved: ~15 minutes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ---
@@ -64,7 +66,7 @@ $ hambugsy analyze ./src/OrderService.java
 Hambugsy uses **GitHub Copilot CLI** to perform intelligent analysis:
 
 1. **Parse** - Extracts test assertions and code logic
-2. **Compare** - Analyzes intent of test vs. implementation  
+2. **Compare** - Analyzes intent of test vs. implementation
 3. **Investigate** - Checks git history for recent changes
 4. **Diagnose** - Determines which side diverged from expected behavior
 5. **Recommend** - Suggests specific fixes with line numbers
@@ -93,85 +95,188 @@ Hambugsy uses **GitHub Copilot CLI** to perform intelligent analysis:
 
 ## Installation
 
-```bash
-# Prerequisites
-gh extension install github/gh-copilot
+### Prerequisites
 
-# Install Hambugsy
+```bash
+# Install GitHub Copilot CLI extension
+gh extension install github/gh-copilot
+gh auth login
+```
+
+### Install Hambugsy
+
+```bash
+# Option 1: Install globally from npm
 npm install -g hambugsy
 
-# Or clone and build
-git clone https://github.com/yourusername/hambugsy.git
+# Option 2: Clone and build locally
+git clone https://github.com/APorkolab/hambugsy.git
 cd hambugsy
-npm install && npm link
+npm install
+npm run build
+npm link
 ```
 
 ---
 
 ## Usage
 
-### Basic Analysis
+### Analyze Command
+
+Analyze test failures and determine if the test or code is buggy.
 
 ```bash
 # Analyze a specific file
-hambugsy analyze ./src/MyService.java
+hambugsy analyze ./src/OrderService.java
 
-# Analyze with verbose output
-hambugsy analyze ./src/MyService.java --verbose
-
-# Analyze entire project
+# Analyze entire directory recursively
 hambugsy analyze ./src --recursive
+
+# Filter results
+hambugsy analyze ./src --filter=bugs      # Only show code bugs
+hambugsy analyze ./src --filter=tests     # Only show outdated tests
+
+# Output formats
+hambugsy analyze ./src --format=console   # Pretty terminal output (default)
+hambugsy analyze ./src --format=json      # JSON for CI/CD integration
+hambugsy analyze ./src --format=github    # GitHub Actions annotations
+
+# Verbose output
+hambugsy analyze ./src --verbose
 ```
 
-### Filtering
+### Suggest Command
+
+Find missing tests and generate test suggestions.
 
 ```bash
-# Only show code bugs (ignore outdated tests)
-hambugsy analyze ./src --filter=bugs
+# Find missing tests in a file/directory
+hambugsy suggest ./src/OrderService.java
 
-# Only show outdated tests
-hambugsy analyze ./src --filter=tests
+# Generate test files
+hambugsy suggest ./src --generate
 
-# Focus on specific test
-hambugsy analyze ./src/MyService.java --test=testCalculateDiscount
+# Filter by priority
+hambugsy suggest ./src --priority=critical  # Only CRITICAL issues
+hambugsy suggest ./src --priority=high      # CRITICAL + HIGH
+hambugsy suggest ./src --priority=medium    # All except LOW
 ```
 
-### Output Formats
+### Init Command
+
+Initialize Hambugsy configuration in your project.
 
 ```bash
-# JSON output for CI/CD integration
-hambugsy analyze ./src --format=json
-
-# Markdown report
-hambugsy analyze ./src --format=markdown > report.md
-
-# GitHub Actions annotation format
-hambugsy analyze ./src --format=github
-```
-
-### Interactive Mode
-
-```bash
-# Step through each issue interactively
-hambugsy analyze ./src --interactive
-
-# Auto-fix with confirmation
-hambugsy fix ./src
+hambugsy init
+hambugsy init --language=java
+hambugsy init --force  # Overwrite existing config
 ```
 
 ---
 
 ## Supported Languages
 
-| Language | Test Frameworks | Status |
-|----------|-----------------|--------|
-| Java | JUnit 4/5, TestNG | ✅ Full |
-| TypeScript/JavaScript | Jest, Mocha, Vitest | ✅ Full |
-| Python | pytest, unittest | ✅ Full |
-| C# | NUnit, xUnit, MSTest | 🔶 Beta |
-| Go | testing package | 🔶 Beta |
-| Kotlin | JUnit, Kotest | 📋 Planned |
-| Rust | built-in tests | 📋 Planned |
+| Language | Test Framework | Status |
+|----------|----------------|--------|
+| Java | JUnit 4/5 | ✅ Supported |
+| TypeScript | Jest, Vitest | 📋 Planned |
+| Python | pytest | 📋 Planned |
+
+---
+
+## The Verdict System
+
+Hambugsy classifies every failing test into one of four verdicts:
+
+| Verdict | Meaning | Icon |
+|---------|---------|------|
+| **Code Bug** | Test is correct, code has a defect | 🐛 |
+| **Outdated Test** | Code changed intentionally, test needs update | 📜 |
+| **Flaky Test** | Test passes/fails inconsistently | 🎲 |
+| **Environment Issue** | External dependency problem | 🌐 |
+
+### How Verdicts Are Determined
+
+```
+                    ┌─────────────────────┐
+                    │   Divergence Found  │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │ Is code newer than  │
+              ┌─YES─┤      the test?      ├─NO──┐
+              │     └─────────────────────┘     │
+              ▼                                 ▼
+    ┌─────────────────┐               ┌─────────────────┐
+    │ Was the commit  │               │                 │
+    │  intentional?   │               │    CODE BUG     │
+    │ (feat:, refac:) │               │                 │
+    └────────┬────────┘               └─────────────────┘
+             │
+      ┌──────┴──────┐
+      │             │
+     YES            NO
+      │             │
+      ▼             ▼
+ ┌─────────┐   ┌─────────┐
+ │OUTDATED │   │CODE BUG │
+ │  TEST   │   │(regress)│
+ └─────────┘   └─────────┘
+```
+
+---
+
+## Missing Test Detection
+
+Hambugsy proactively identifies **untested code paths**:
+
+```bash
+$ hambugsy suggest ./src/OrderService.java
+
+🍔 HAMBUGSY - Missing Test Suggestions 🍔
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+=== Test Coverage Analysis ===
+
+Total methods:     8
+Fully covered:     3
+Partially covered: 3
+Uncovered:         2
+
+=== Missing Tests ===
+
+📍 validateOrder() @ OrderService.java:42
+├── ✅ TESTED: Basic functionality test
+├── ❌ MISSING: No test for null input (CRITICAL)
+└── ❌ MISSING: No test for empty collection (HIGH)
+
+└── 💡 SUGGESTED TEST:
+    @Test
+    void testValidateOrder_null_check() {
+        OrderService instance = new OrderService();
+
+        assertThrows(NullPointerException.class, () -> {
+            instance.validateOrder(null);
+        });
+    }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 MISSING TEST SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🔥 CRITICAL:  2
+  ⚠️ HIGH:      3
+  💡 MEDIUM:    1
+  ✅ LOW:       0
+```
+
+### Detected Patterns
+
+| Pattern | Description | Priority |
+|---------|-------------|----------|
+| `NULL_CHECK` | Method has parameter but no null test | CRITICAL |
+| `EXCEPTION` | Method can throw but no assertThrows test | CRITICAL |
+| `EMPTY_COLLECTION` | Method takes List/Array but no empty test | HIGH |
+| `BOUNDARY` | Method has numeric param but no 0/-1/MAX test | MEDIUM |
 
 ---
 
@@ -181,45 +286,15 @@ Create `.hambugsy.yml` in your project root:
 
 ```yaml
 # .hambugsy.yml
-version: 1
-
-# Source and test file patterns
-patterns:
-  source:
-    - "src/**/*.java"
-    - "src/**/*.ts"
-  test:
-    - "test/**/*.java"
-    - "**/*.test.ts"
-    - "**/*.spec.ts"
-
-# Analysis settings
-analysis:
-  # How far back to check git history
-  git_history_days: 90
-  
-  # Confidence threshold for verdicts (0.0 - 1.0)
-  confidence_threshold: 0.7
-  
-  # Include AI explanation in output
-  explain: true
-
-# Ignore patterns
-ignore:
-  - "**/generated/**"
+language: java
+sourceDir: src/main
+testDir: src/test
+excludePatterns:
   - "**/node_modules/**"
-  - "**/*.mock.ts"
-
-# CI/CD settings
-ci:
-  # Fail build if code bugs found
-  fail_on_bugs: true
-  
-  # Fail build if outdated tests found
-  fail_on_outdated_tests: false
-  
-  # Generate report artifact
-  report: true
+  - "**/build/**"
+  - "**/target/**"
+outputFormat: console
+copilotEnabled: true
 ```
 
 ---
@@ -239,128 +314,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for git analysis
-      
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+
+      - name: Install GitHub Copilot CLI
+        run: gh extension install github/gh-copilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install Hambugsy
         run: npm install -g hambugsy
-      
+
       - name: Run Analysis
         run: hambugsy analyze ./src --format=github
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### GitLab CI
-
-```yaml
-hambugsy:
-  stage: test
-  script:
-    - npm install -g hambugsy
-    - hambugsy analyze ./src --format=json > hambugsy-report.json
-  artifacts:
-    reports:
-      hambugsy: hambugsy-report.json
-```
-
----
-
-## The Verdict System
-
-Hambugsy classifies every failing test into one of four verdicts:
-
-| Verdict | Meaning | Icon |
-|---------|---------|------|
-| **Code Bug** | Test is correct, code has a defect | 🐛 |
-| **Outdated Test** | Code changed, test needs update | 📜 |
-| **Flaky Test** | Test passes/fails inconsistently | 🎲 |
-| **Environment Issue** | External dependency problem | 🌐 |
-
----
-
-## 🆕 Missing Test Suggestions
-
-Beyond analyzing failing tests, Hambugsy proactively identifies **untested code paths**:
-
-```bash
-$ hambugsy suggest ./src/OrderService.java
-
-🍔 HAMBUGSY - Finding gaps in your test coverage...
-
-┌─────────────────────────────────────────────────────────────────┐
-│  ⚠️  MISSING TESTS DETECTED                                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  📍 validateOrder() @ line 42                                   │
-│  ├── ❌ No test for: null input handling                        │
-│  ├── ❌ No test for: empty cart scenario                        │
-│  └── ❌ No test for: negative quantity values                   │
-│                                                                 │
-│  💡 SUGGESTED TESTS:                                            │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │ @Test                                                      │ │
-│  │ void validateOrder_ShouldThrow_WhenCartIsNull() {          │ │
-│  │     assertThrows(ValidationException.class,                │ │
-│  │         () -> service.validateOrder(null));                │ │
-│  │ }                                                          │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  📍 processPayment() @ line 78                                  │
-│  ├── ✅ Happy path tested                                       │
-│  ├── ❌ No test for: payment gateway timeout                    │
-│  └── ❌ No test for: insufficient funds scenario                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-📊 Coverage Gap Summary:
-   Methods without tests: 2/8
-   Missing edge cases: 7
-   Suggested new tests: 5
-```
-
-### How It Works
-
-1. **Static Analysis** - Identifies all public methods and their parameters
-2. **Pattern Detection** - Recognizes common scenarios that need testing:
-   - Null/undefined inputs
-   - Empty collections
-   - Boundary values (0, -1, MAX_INT)
-   - Exception paths
-   - Async error handling
-3. **AI Generation** - Uses Copilot to generate actual test code suggestions
-4. **Priority Ranking** - Orders suggestions by risk (null checks > edge cases)
-
-### How Verdicts Are Determined
-
-```
-                    ┌─────────────────────┐
-                    │  Test Failure Found │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ Did code change     │
-              ┌─YES─┤ since test written? ├─NO──┐
-              │     └─────────────────────┘     │
-              ▼                                 ▼
-    ┌─────────────────┐               ┌─────────────────┐
-    │ Does new code   │               │ Does test match │
-    │ match business  │               │ requirements?   │
-    │ requirements?   │               └────────┬────────┘
-    └────────┬────────┘                        │
-             │                          ┌──────┴──────┐
-      ┌──────┴──────┐                   │             │
-      │             │                  YES            NO
-     YES            NO                  │             │
-      │             │                   ▼             ▼
-      ▼             ▼              ┌─────────┐   ┌─────────┐
- ┌─────────┐   ┌─────────┐        │Code Bug │   │Test Bug │
- │Outdated │   │Code Bug │        └─────────┘   └─────────┘
- │  Test   │   │(regress)│
- └─────────┘   └─────────┘
 ```
 
 ---
@@ -372,58 +343,51 @@ $ hambugsy suggest ./src/OrderService.java
 ```java
 // OrderService.java - Updated 2024-11-22
 public double calculateDiscount(double price, boolean isPremium) {
-    return isPremium ? price * 0.15 : price * 0.05;  // Changed from 10%/3%
+    return isPremium ? price * 0.85 : price * 0.95;  // 15%/5% discount
 }
 
-// OrderServiceTest.java - Written 2024-03-15  
+// OrderServiceTest.java - Written 2024-03-15
 @Test
 void testPremiumDiscount() {
-    assertEquals(10.0, service.calculateDiscount(100, true));  // Expects 10%
+    assertEquals(90.0, service.calculateDiscount(100, true));  // Expects 10%!
 }
 ```
 
-```bash
-$ hambugsy analyze ./src/OrderService.java
+```
+🎯 VERDICT: 📜 OUTDATED TEST (96%)
 
-🎯 VERDICT: Code CHANGED → Test OUTDATED
+The source code was intentionally updated but the test was not updated to match.
+Commit: a1b2c3d - "feat: increase premium discount to 15%"
 
-Timeline:
-  • 2024-03-15: Test written expecting 10% premium discount
-  • 2024-11-22: Code updated to 15% per "new pricing policy" (commit a1b2c3d)
-
-💡 Recommended fix:
-   OrderServiceTest.java:15 - Change assertion from 10.0 to 15.0
+💡 RECOMMENDATION:
+Update the test in OrderServiceTest.java to match the new behavior.
 ```
 
-### Example 2: Actual Code Bug
+### Example 2: Actual Code Bug (Regression)
 
-```typescript
-// userService.ts
-async function getUser(id: string): Promise<User> {
-    const user = await db.users.findById(id);
-    return user;  // Missing null check!
+```java
+// UserService.java - Recently changed
+public User getUser(String id) {
+    User user = db.findById(id);
+    return user;  // Missing null check - should throw!
 }
 
-// userService.test.ts
-it('should throw when user not found', async () => {
-    await expect(getUser('invalid-id')).rejects.toThrow(UserNotFoundError);
-});
+// UserServiceTest.java
+@Test
+void testGetUser_NotFound() {
+    assertThrows(UserNotFoundException.class,
+        () -> service.getUser("invalid-id"));
+}
 ```
 
-```bash
-$ hambugsy analyze ./src/userService.ts
+```
+🎯 VERDICT: 🐛 CODE BUG (92%)
 
-🎯 VERDICT: Test CORRECT → Code has BUG
+Regression detected: recent code change broke existing functionality.
+Commit: def5678 - "fix: typo in user lookup"
 
-Analysis:
-  • Test expects: UserNotFoundError when user not found
-  • Code does: Returns undefined (no error thrown)
-  • No recent changes to this method
-  • Similar pattern exists in ProductService.getProduct() (working correctly)
-
-💡 Recommended fix:
-   userService.ts:4 - Add null check:
-   if (!user) throw new UserNotFoundError(id);
+💡 RECOMMENDATION:
+Fix the code in UserService.java - add null check and throw UserNotFoundException.
 ```
 
 ---
@@ -440,37 +404,42 @@ Analysis:
 
 ---
 
+## Roadmap
+
+- [x] Core verdict engine
+- [x] Java/JUnit 5 support
+- [x] Git history analysis
+- [x] Beautiful console output
+- [x] Missing test detection (`suggest` command)
+- [x] JSON output format
+- [x] GitHub Actions format
+- [ ] TypeScript/Jest support
+- [ ] Python/pytest support
+- [ ] VS Code extension
+- [ ] Auto-fix mode (`--fix` flag)
+
+---
+
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+We welcome contributions!
 
 ```bash
 # Development setup
-git clone https://github.com/yourusername/hambugsy.git
+git clone https://github.com/APorkolab/hambugsy.git
 cd hambugsy
 npm install
-npm run dev
+npm run dev -- --help
 
 # Run tests
 npm test
 
+# Type check
+npm run typecheck
+
 # Build
 npm run build
 ```
-
----
-
-## Roadmap
-
-- [x] Core verdict engine
-- [x] Java/JUnit support
-- [x] TypeScript/Jest support
-- [x] Git history analysis
-- [ ] VS Code extension
-- [ ] IntelliJ plugin
-- [ ] Auto-fix mode
-- [ ] Team analytics dashboard
-- [ ] Slack/Teams notifications
 
 ---
 

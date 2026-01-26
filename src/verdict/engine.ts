@@ -1,13 +1,7 @@
 import type { TestFailure, Verdict } from "../core/types.js";
 
-export interface VerdictResult {
-  verdict: Verdict;
-  confidence: number;
-  reasoning: string;
-}
-
 export class VerdictEngine {
-  analyze(failure: TestFailure): VerdictResult {
+  analyze(failure: TestFailure): Verdict {
     // TODO: Implement verdict logic based on:
     // - Stack trace analysis
     // - Recent git changes
@@ -17,9 +11,16 @@ export class VerdictEngine {
     const reasoning = this.buildReasoning(failure);
 
     return {
-      verdict: "unknown",
+      type: "ENVIRONMENT_ISSUE",
       confidence: 0,
-      reasoning,
+      reason: reasoning,
+      explanation: "Unable to determine the cause of the failure.",
+      recommendation: {
+        action: "INVESTIGATE",
+        description: "Manual investigation required",
+        affectedFiles: failure.sourceFile ? [failure.sourceFile] : [],
+        priority: "MEDIUM",
+      },
     };
   }
 

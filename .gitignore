@@ -13,3 +13,13 @@ coverage/
 .claude/
 vscode-extension/out/
 vscode-extension/*.vsix
+
+# Internal documentation (not for public)
+docs-internal/
+docs/DEV_SUBMISSION.md
+docs/COMPETITIVE_ANALYSIS.md
+docs/MARKETING_ONEPAGER.md
+docs/QUICKSTART_CHECKLIST.md
+docs/TECHNICAL_SPEC.md
+docs/IMPLEMENTATION_GUIDE.md
+docs/ARCHITECTURE.md

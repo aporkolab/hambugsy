@@ -4,6 +4,7 @@ import chalk from "chalk";
 import { glob } from "glob";
 import { resolve, relative } from "path";
 import { createInterface } from "readline";
+import chokidar from "chokidar";
 import { ConsoleReporter } from "../output/console.js";
 import { JsonOutput } from "../output/json.js";
 import { MarkdownReporter } from "../output/markdown.js";
@@ -38,6 +39,7 @@ interface AnalyzeOptions {
   confidence?: string;
   test?: string;
   interactive?: boolean;
+  watch?: boolean;
 }
 
 interface ProgressInfo {
@@ -72,9 +74,14 @@ export const analyzeCommand = new Command("analyze")
   )
   .option("-t, --test <name>", "Filter by specific test name")
   .option("-i, --interactive", "Interactive mode - confirm each step")
+  .option("-w, --watch", "Watch for file changes and re-run analysis")
   .action(async (path: string, options: AnalyzeOptions) => {
-    const exitCode = await runAnalysis(path, options);
-    process.exit(exitCode);
+    if (options.watch) {
+      await runWatchMode(path, options);
+    } else {
+      const exitCode = await runAnalysis(path, options);
+      process.exit(exitCode);
+    }
   });
 
 // ============================================================================
@@ -158,7 +165,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
 
     return hasBugs ? 1 : 0;
   } catch (error) {
-    spinner.fail("Analysis failed");
+    if (spinner.isSpinning) spinner.fail("Analysis failed");
 
     if (error instanceof CopilotError && error.isNotInstalled) {
       console.error(
@@ -179,6 +186,96 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
 
     return 1;
   }
+}
+
+// ============================================================================
+// Watch Mode
+// ============================================================================
+
+async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void> {
+  const resolvedPath = resolve(path);
+  let isAnalyzing = false;
+  let pendingAnalysis = false;
+
+  console.log(chalk.cyan.bold("\n  WATCH MODE"));
+  console.log(chalk.gray("  Watching for file changes...\n"));
+  console.log(chalk.gray(`  Path: ${resolvedPath}`));
+  console.log(chalk.gray("  Press Ctrl+C to stop\n"));
+
+  // Run initial analysis
+  await runAnalysis(path, options);
+  console.log(chalk.gray(`\n[${getTimestamp()}] Watching for changes...`));
+
+  // Set up file watcher
+  const watcher = chokidar.watch(
+    ["**/*.java", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py"],
+    {
+      cwd: resolvedPath,
+      ignored: [
+        "**/node_modules/**",
+        "**/build/**",
+        "**/target/**",
+        "**/out/**",
+        "**/dist/**",
+        "**/.git/**",
+        "**/__pycache__/**",
+        "**/*.d.ts",
+      ],
+      ignoreInitial: true,
+      persistent: true,
+    }
+  );
+
+  const runDebouncedAnalysis = async () => {
+    if (isAnalyzing) {
+      pendingAnalysis = true;
+      return;
+    }
+
+    isAnalyzing = true;
+    console.clear();
+    console.log(chalk.cyan.bold("\n  WATCH MODE"));
+    console.log(chalk.gray(`  [${getTimestamp()}] File change detected, re-analyzing...\n`));
+
+    await runAnalysis(path, options);
+    console.log(chalk.gray(`\n[${getTimestamp()}] Watching for changes...`));
+
+    isAnalyzing = false;
+
+    if (pendingAnalysis) {
+      pendingAnalysis = false;
+      setTimeout(runDebouncedAnalysis, 100);
+    }
+  };
+
+  watcher.on("change", (filePath) => {
+    console.log(chalk.yellow(`\n  File changed: ${filePath}`));
+    runDebouncedAnalysis();
+  });
+
+  watcher.on("add", (filePath) => {
+    console.log(chalk.green(`\n  File added: ${filePath}`));
+    runDebouncedAnalysis();
+  });
+
+  watcher.on("unlink", (filePath) => {
+    console.log(chalk.red(`\n  File removed: ${filePath}`));
+    runDebouncedAnalysis();
+  });
+
+  // Handle graceful shutdown
+  process.on("SIGINT", () => {
+    console.log(chalk.gray("\n\nStopping watch mode..."));
+    watcher.close();
+    process.exit(0);
+  });
+
+  // Keep the process alive
+  await new Promise(() => {});
+}
+
+function getTimestamp(): string {
+  return new Date().toLocaleTimeString();
 }
 
 // ============================================================================

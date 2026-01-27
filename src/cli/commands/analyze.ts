@@ -3,6 +3,7 @@ import ora, { Ora } from "ora";
 import chalk from "chalk";
 import { glob } from "glob";
 import { resolve, relative } from "path";
+import { readFileSync } from "fs";
 import { createInterface } from "readline";
 import chokidar from "chokidar";
 import { ConsoleReporter } from "../output/console.js";
@@ -710,13 +711,11 @@ function detectDivergence(
   behavior: Behavior,
   realErrorMessage?: string
 ): AnalysisResult["divergence"] {
-  // If we have a real error from test execution, use it!
+  // Priority 1: Real error from test execution (most accurate)
   if (realErrorMessage) {
-    // Parse the error to determine divergence type
     const errorLower = realErrorMessage.toLowerCase();
 
     if (errorLower.includes("expected") && errorLower.includes("but")) {
-      // Extract expected vs actual from error message
       const expectedMatch = realErrorMessage.match(/expected[:\s]+([^\n,]+)/i);
       const actualMatch = realErrorMessage.match(/(?:but was|actual|got)[:\s]+([^\n,]+)/i);
 
@@ -741,7 +740,6 @@ function detectDivergence(
       };
     }
 
-    // Generic failure
     return {
       type: "RETURN_VALUE_MISMATCH",
       description: realErrorMessage.split("\n")[0],
@@ -752,7 +750,7 @@ function detectDivergence(
     };
   }
 
-  // Fallback: Static analysis for exception mismatches
+  // Priority 2: Exception mismatch detection
   if (
     expectation.expectedExceptions.length > 0 &&
     behavior.thrownExceptions.length === 0
@@ -767,7 +765,257 @@ function detectDivergence(
     };
   }
 
-  // No divergence detected without actually running tests
+  // Priority 3: Compare expected output vs return value (from AI analysis)
+  if (expectation.expectedOutput && behavior.returnValue) {
+    const expectedNorm = normalizeValue(expectation.expectedOutput);
+    const actualNorm = normalizeValue(behavior.returnValue);
+
+    if (expectedNorm !== actualNorm && expectedNorm !== "unknown" && actualNorm !== "unknown") {
+      return {
+        type: "RETURN_VALUE_MISMATCH",
+        description: `Expected output doesn't match code behavior`,
+        testLine: pair.test.lineNumber,
+        codeLine: pair.source.lineNumber,
+        expected: expectation.expectedOutput,
+        actual: behavior.returnValue,
+      };
+    }
+  }
+
+  // Priority 4: Semantic comparison of descriptions
+  const semanticDivergence = detectSemanticDivergence(
+    expectation.expectedBehavior,
+    behavior.actualBehavior,
+    pair
+  );
+  if (semanticDivergence) {
+    return semanticDivergence;
+  }
+
+  // Priority 5: Parse assertions from test body for numeric comparisons
+  const assertionDivergence = detectAssertionDivergence(pair, behavior);
+  if (assertionDivergence) {
+    return assertionDivergence;
+  }
+
+  // No divergence detected
+  return null;
+}
+
+/**
+ * Normalize a value for comparison (handles strings, numbers, etc.)
+ */
+function normalizeValue(value: string): string {
+  if (!value) return "unknown";
+
+  // Remove common wrappers
+  let normalized = value.trim().toLowerCase();
+  normalized = normalized.replace(/^["']|["']$/g, "");
+
+  // Try to extract numeric value
+  const numMatch = normalized.match(/(-?\d+\.?\d*)/);
+  if (numMatch) {
+    return numMatch[1];
+  }
+
+  // Return cleaned string
+  return normalized;
+}
+
+/**
+ * Detect divergence by comparing behavior descriptions semantically
+ */
+function detectSemanticDivergence(
+  expectedBehavior: string,
+  actualBehavior: string,
+  pair: TestSourcePair
+): AnalysisResult["divergence"] | null {
+  if (!expectedBehavior || !actualBehavior) return null;
+
+  const expected = expectedBehavior.toLowerCase();
+  const actual = actualBehavior.toLowerCase();
+
+  // Look for percentage/discount mismatches
+  const expectedPercent = expected.match(/(\d+)\s*%/);
+  const actualPercent = actual.match(/(\d+)\s*%/);
+  if (expectedPercent && actualPercent && expectedPercent[1] !== actualPercent[1]) {
+    return {
+      type: "RETURN_VALUE_MISMATCH",
+      description: `Percentage mismatch: test expects ${expectedPercent[1]}%, code applies ${actualPercent[1]}%`,
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: `${expectedPercent[1]}%`,
+      actual: `${actualPercent[1]}%`,
+    };
+  }
+
+  // Look for multiplier/factor mismatches (e.g., 0.90 vs 0.85)
+  const expectedFactor = expected.match(/(\d+\.\d+)/);
+  const actualFactor = actual.match(/(\d+\.\d+)/);
+  if (expectedFactor && actualFactor && expectedFactor[1] !== actualFactor[1]) {
+    return {
+      type: "RETURN_VALUE_MISMATCH",
+      description: `Value mismatch: test expects ${expectedFactor[1]}, code uses ${actualFactor[1]}`,
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: expectedFactor[1],
+      actual: actualFactor[1],
+    };
+  }
+
+  // Look for boolean/state mismatches
+  const expectedTrue = expected.includes("true") || expected.includes("valid") || expected.includes("success");
+  const expectedFalse = expected.includes("false") || expected.includes("invalid") || expected.includes("fail");
+  const actualTrue = actual.includes("true") || actual.includes("valid") || actual.includes("success");
+  const actualFalse = actual.includes("false") || actual.includes("invalid") || actual.includes("fail");
+
+  if ((expectedTrue && actualFalse) || (expectedFalse && actualTrue)) {
+    return {
+      type: "RETURN_VALUE_MISMATCH",
+      description: `Boolean/state mismatch detected`,
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: expectedTrue ? "true/valid" : "false/invalid",
+      actual: actualTrue ? "true/valid" : "false/invalid",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Detect divergence by analyzing assertions in test body and constants/calculations in source
+ */
+function detectAssertionDivergence(
+  pair: TestSourcePair,
+  _behavior: Behavior
+): AnalysisResult["divergence"] | null {
+  const testBody = pair.test.body;
+
+  // Read full source file to get class-level constants (not just method body)
+  let sourceBody = pair.source.body;
+  try {
+    sourceBody = readFileSync(pair.source.filePath, "utf8");
+  } catch {
+    // Fall back to method body if file read fails
+  }
+
+  // Extract numeric assertions from test (expected values)
+  const assertionPatterns = [
+    /assertEquals\s*\(\s*(-?\d+\.?\d*)/g,
+    /expect\s*\([^)]+\)\s*\.toBe\s*\(\s*(-?\d+\.?\d*)/g,
+    /assert\.equal\s*\([^,]+,\s*(-?\d+\.?\d*)/g,
+    /assertEqual\s*\([^,]+,\s*(-?\d+\.?\d*)/g,
+    /toEqual\s*\(\s*(-?\d+\.?\d*)/g,
+  ];
+
+  const expectedValues: number[] = [];
+  for (const pattern of assertionPatterns) {
+    let match;
+    while ((match = pattern.exec(testBody)) !== null) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val)) expectedValues.push(val);
+    }
+  }
+
+  // Extract percentage/rate constants from source code
+  // Patterns like: PREMIUM_DISCOUNT = 0.15, discount = 0.10, rate = 15
+  const constantPatterns = [
+    /(?:DISCOUNT|RATE|PERCENT)[A-Z_]*\s*=\s*(-?\d+\.?\d*)/gi,
+    /(?:discount|rate|percent)\s*=\s*(-?\d+\.?\d*)/gi,
+    /=\s*(-?\d+\.?\d*)\s*;\s*\/\/.*(?:discount|rate|percent)/gi,
+  ];
+
+  const sourceConstants: number[] = [];
+  for (const pattern of constantPatterns) {
+    let match;
+    while ((match = pattern.exec(sourceBody)) !== null) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val)) sourceConstants.push(val);
+    }
+  }
+
+  // Check for discount percentage mismatches
+  // If test expects 90.0 for price=100, that implies 10% discount (0.10)
+  // If source has PREMIUM_DISCOUNT = 0.15, that's 15% discount
+  for (const expectedVal of expectedValues) {
+    // Check if this looks like a discounted price (e.g., 90.0 from 100.0)
+    if (expectedVal >= 80 && expectedVal <= 99) {
+      // This might be a result of (100 - discount%)
+      const impliedDiscountPercent = 100 - expectedVal;  // e.g., 90 -> 10% discount
+
+      for (const constant of sourceConstants) {
+        // If constant is a decimal discount rate (like 0.15 for 15%)
+        if (constant > 0 && constant < 1) {
+          const actualDiscountPercent = Math.round(constant * 100);
+
+          if (actualDiscountPercent !== impliedDiscountPercent && Math.abs(actualDiscountPercent - impliedDiscountPercent) <= 20) {
+            return {
+              type: "RETURN_VALUE_MISMATCH",
+              description: `Discount mismatch: test expects ${impliedDiscountPercent}% discount (result=${expectedVal}), but code applies ${actualDiscountPercent}% discount (${constant})`,
+              testLine: pair.test.lineNumber,
+              codeLine: pair.source.lineNumber,
+              expected: `${expectedVal} (${impliedDiscountPercent}% discount)`,
+              actual: `${100 - actualDiscountPercent} (${actualDiscountPercent}% discount)`,
+            };
+          }
+        }
+        // If constant is a whole number percentage (like 15 for 15%)
+        else if (constant >= 1 && constant <= 50) {
+          const actualDiscountPercent = constant;
+
+          if (actualDiscountPercent !== impliedDiscountPercent && Math.abs(actualDiscountPercent - impliedDiscountPercent) <= 20) {
+            return {
+              type: "RETURN_VALUE_MISMATCH",
+              description: `Discount mismatch: test expects ${impliedDiscountPercent}% discount (result=${expectedVal}), but code applies ${actualDiscountPercent}% discount`,
+              testLine: pair.test.lineNumber,
+              codeLine: pair.source.lineNumber,
+              expected: `${expectedVal} (${impliedDiscountPercent}% discount)`,
+              actual: `${100 - actualDiscountPercent} (${actualDiscountPercent}% discount)`,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // Direct value comparison - look for obvious mismatches
+  const directValuePatterns = [
+    /return\s+(-?\d+\.?\d*)\s*;/g,
+    /=\s*(-?\d+\.?\d*)\s*;/g,
+  ];
+
+  const sourceValues: number[] = [];
+  for (const pattern of directValuePatterns) {
+    let match;
+    while ((match = pattern.exec(sourceBody)) !== null) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val) && val !== 0 && val !== 1) sourceValues.push(val);
+    }
+  }
+
+  // Look for close but different values
+  for (const expected of expectedValues) {
+    for (const actual of sourceValues) {
+      // Skip if they're equal or very different
+      if (expected === actual) continue;
+      const diff = Math.abs(expected - actual);
+      const ratio = diff / Math.max(expected, actual);
+
+      // Flag if they're close but different (within 30%)
+      if (ratio > 0.01 && ratio < 0.30 && diff >= 1) {
+        return {
+          type: "RETURN_VALUE_MISMATCH",
+          description: `Value mismatch: test expects ${expected}, source has ${actual}`,
+          testLine: pair.test.lineNumber,
+          codeLine: pair.source.lineNumber,
+          expected: String(expected),
+          actual: String(actual),
+        };
+      }
+    }
+  }
+
   return null;
 }
 

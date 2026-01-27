@@ -348,9 +348,9 @@ export class ConsoleReporter {
   }
 
   private printBoxContent(content: string): void {
-    // Strip ANSI codes for length calculation
-    const visibleLength = this.stripAnsi(content).length;
-    const padding = Math.max(0, this.boxWidth - 4 - visibleLength);
+    // Use visible width that accounts for emoji width
+    const visibleWidth = this.getVisibleWidth(content);
+    const padding = Math.max(0, this.boxWidth - 4 - visibleWidth);
 
     console.log(
       chalk.gray(BOX.VERTICAL) +
@@ -365,6 +365,31 @@ export class ConsoleReporter {
   private stripAnsi(str: string): string {
     // eslint-disable-next-line no-control-regex
     return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
+  }
+
+  /**
+   * Calculate visible width accounting for emojis (which are 2 chars wide)
+   */
+  private getVisibleWidth(str: string): number {
+    const stripped = this.stripAnsi(str);
+    let width = 0;
+    for (const char of stripped) {
+      const code = char.codePointAt(0) ?? 0;
+      // Emoji ranges and other wide characters
+      if (
+        code >= 0x1F300 && code <= 0x1F9FF || // Misc Symbols, Emoticons, etc.
+        code >= 0x2600 && code <= 0x26FF ||   // Misc Symbols
+        code >= 0x2700 && code <= 0x27BF ||   // Dingbats
+        code >= 0x1F600 && code <= 0x1F64F || // Emoticons
+        code >= 0x1F680 && code <= 0x1F6FF || // Transport
+        code >= 0x1F1E0 && code <= 0x1F1FF    // Flags
+      ) {
+        width += 2;
+      } else {
+        width += 1;
+      }
+    }
+    return width;
   }
 
   // ==========================================================================

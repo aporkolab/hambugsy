@@ -97,11 +97,60 @@ Hambugsy uses **GitHub Copilot CLI** to perform intelligent analysis:
 
 ### Prerequisites
 
+#### 1. GitHub CLI (gh)
+
+First, install the GitHub CLI if you haven't already:
+
 ```bash
-# Install GitHub Copilot CLI extension
-gh extension install github/gh-copilot
-gh auth login
+# macOS (Homebrew)
+brew install gh
+
+# Windows (winget)
+winget install --id GitHub.cli
+
+# Ubuntu/Debian
+sudo apt install gh
+
+# Or download from: https://cli.github.com/
 ```
+
+#### 2. GitHub Copilot CLI Extension
+
+Hambugsy leverages GitHub Copilot CLI for AI-powered analysis. Here's how to set it up:
+
+```bash
+# Step 1: Authenticate with GitHub
+gh auth login
+# Follow the prompts to authenticate via browser or token
+
+# Step 2: Install the Copilot CLI extension
+gh extension install github/gh-copilot
+
+# Step 3: Verify installation
+gh copilot --help
+```
+
+**Requirements for GitHub Copilot CLI:**
+- Active GitHub Copilot subscription (Individual, Business, or Enterprise)
+- GitHub CLI version 2.0.0 or higher
+- Authenticated GitHub session with Copilot access
+
+**Troubleshooting:**
+```bash
+# If you get permission errors, ensure you're logged in
+gh auth status
+
+# If Copilot CLI is not found, try reinstalling
+gh extension remove gh-copilot
+gh extension install github/gh-copilot
+
+# To upgrade to the latest version
+gh extension upgrade gh-copilot
+```
+
+> **Note:** Hambugsy works without GitHub Copilot CLI but with limited functionality. The AI-powered semantic analysis and intelligent fix suggestions require Copilot CLI to be installed and authenticated.
+
+---
 
 ### Install Hambugsy
 

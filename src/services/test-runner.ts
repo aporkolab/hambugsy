@@ -27,7 +27,7 @@ export interface TestRunResult {
   rawOutput: string;
 }
 
-export type TestFramework = "jest" | "vitest" | "mocha" | "junit" | "pytest" | "unittest";
+export type TestFramework = "jest" | "vitest" | "mocha" | "junit" | "pytest" | "unittest" | "go" | "cargo" | "dotnet";
 
 // ============================================================================
 // TestRunner
@@ -104,6 +104,17 @@ export class TestRunner {
     if (fs.existsSync(path.join(this.cwd, "setup.py"))) return "pytest";
     if (fs.existsSync(path.join(this.cwd, "pyproject.toml"))) return "pytest";
 
+    // Check for Go
+    if (fs.existsSync(path.join(this.cwd, "go.mod"))) return "go";
+
+    // Check for Rust
+    if (fs.existsSync(path.join(this.cwd, "Cargo.toml"))) return "cargo";
+
+    // Check for .NET/C#
+    const csprojFiles = fs.readdirSync(this.cwd).filter(f => f.endsWith(".csproj"));
+    if (csprojFiles.length > 0) return "dotnet";
+    if (fs.existsSync(path.join(this.cwd, "*.sln"))) return "dotnet";
+
     return null;
   }
 
@@ -136,6 +147,12 @@ export class TestRunner {
         return this.runPytest();
       case "unittest":
         return this.runUnittest();
+      case "go":
+        return this.runGoTest();
+      case "cargo":
+        return this.runCargoTest();
+      case "dotnet":
+        return this.runDotnetTest();
       default:
         throw new Error(`Unsupported test framework: ${detectedFramework}`);
     }
@@ -162,6 +179,12 @@ export class TestRunner {
         return this.runJUnit(filePath);
       case "pytest":
         return this.runPytest(filePath);
+      case "go":
+        return this.runGoTest(filePath);
+      case "cargo":
+        return this.runCargoTest(filePath);
+      case "dotnet":
+        return this.runDotnetTest(filePath);
       default:
         throw new Error(`Unsupported test framework: ${detectedFramework}`);
     }
@@ -336,6 +359,94 @@ export class TestRunner {
       return this.parseUnittestOutput(stdout + stderr, exitCode);
     } catch (error) {
       return this.createErrorResult("unittest", error);
+    }
+  }
+
+  private async runGoTest(testFile?: string): Promise<TestRunResult> {
+    const args = ["test", "-v", "-json"];
+    if (testFile) {
+      // Go test requires package path, not file path
+      const dir = path.dirname(testFile);
+      args.push(dir === "." ? "./..." : `./${dir}/...`);
+    } else {
+      args.push("./...");
+    }
+
+    try {
+      const { stdout, stderr, exitCode } = await execa("go", args, {
+        cwd: this.cwd,
+        timeout: this.timeout,
+        reject: false,
+      });
+
+      return this.parseGoTestOutput(stdout || stderr, exitCode);
+    } catch (error) {
+      return this.createErrorResult("go", error);
+    }
+  }
+
+  private async runCargoTest(testFile?: string): Promise<TestRunResult> {
+    const args = ["test", "--", "--format=json", "-Z", "unstable-options"];
+    if (testFile) {
+      // Extract test name from file path
+      const testName = path.basename(testFile, ".rs");
+      args.splice(1, 0, testName);
+    }
+
+    try {
+      const { stdout, stderr, exitCode } = await execa("cargo", args, {
+        cwd: this.cwd,
+        timeout: this.timeout,
+        reject: false,
+        env: { ...process.env, CARGO_TERM_COLOR: "never" },
+      });
+
+      return this.parseCargoTestOutput(stdout + stderr, exitCode);
+    } catch (error) {
+      // Fallback to basic cargo test
+      return this.runCargoTestBasic(testFile);
+    }
+  }
+
+  private async runCargoTestBasic(testFile?: string): Promise<TestRunResult> {
+    const args = ["test"];
+    if (testFile) {
+      const testName = path.basename(testFile, ".rs");
+      args.push(testName);
+    }
+
+    try {
+      const { stdout, stderr, exitCode } = await execa("cargo", args, {
+        cwd: this.cwd,
+        timeout: this.timeout,
+        reject: false,
+        env: { ...process.env, CARGO_TERM_COLOR: "never" },
+      });
+
+      return this.parseCargoTestBasicOutput(stdout + stderr, exitCode);
+    } catch (error) {
+      return this.createErrorResult("cargo", error);
+    }
+  }
+
+  private async runDotnetTest(testFile?: string): Promise<TestRunResult> {
+    const args = ["test", "--logger", "trx;LogFileName=test-results.trx", "--no-build"];
+    if (testFile) {
+      // Filter by class or namespace
+      const className = path.basename(testFile, ".cs");
+      args.push("--filter", `FullyQualifiedName~${className}`);
+    }
+
+    try {
+      const { stdout, stderr, exitCode } = await execa("dotnet", args, {
+        cwd: this.cwd,
+        timeout: this.timeout,
+        reject: false,
+      });
+
+      return this.parseDotnetTestOutput(stdout + stderr, exitCode);
+    } catch (error) {
+      return this.createErrorResult("dotnet", error);
     }
   }
 
@@ -592,6 +703,192 @@ export class TestRunner {
       passed: total - failed,
       failed,
       skipped: results.filter(r => r.status === "skipped").length,
+      duration: 0,
+      results,
+      rawOutput: output,
+    };
+  }
+
+  private parseGoTestOutput(output: string, _exitCode: number | undefined): TestRunResult {
+    const results: TestResult[] = [];
+
+    // Parse JSON lines from go test -json
+    const lines = output.split("\n").filter(l => l.trim());
+
+    for (const line of lines) {
+      try {
+        const event = JSON.parse(line);
+        if (event.Action === "pass" || event.Action === "fail" || event.Action === "skip") {
+          if (event.Test) {
+            results.push({
+              name: `${event.Package}/${event.Test}`,
+              status: event.Action === "pass" ? "passed" : event.Action === "skip" ? "skipped" : "failed",
+              duration: (event.Elapsed || 0) * 1000,
+              errorMessage: event.Output,
+            });
+          }
+        }
+      } catch {
+        // Not a JSON line, ignore
+      }
+    }
+
+    // Deduplicate (go test outputs multiple events per test)
+    const uniqueResults = new Map<string, TestResult>();
+    for (const r of results) {
+      uniqueResults.set(r.name, r);
+    }
+
+    const finalResults = Array.from(uniqueResults.values());
+
+    return {
+      framework: "go",
+      totalTests: finalResults.length,
+      passed: finalResults.filter(r => r.status === "passed").length,
+      failed: finalResults.filter(r => r.status === "failed").length,
+      skipped: finalResults.filter(r => r.status === "skipped").length,
+      duration: 0,
+      results: finalResults,
+      rawOutput: output,
+    };
+  }
+
+  private parseCargoTestOutput(output: string, _exitCode: number | undefined): TestRunResult {
+    const results: TestResult[] = [];
+
+    // Parse JSON lines from cargo test --format=json
+    const lines = output.split("\n").filter(l => l.trim());
+
+    for (const line of lines) {
+      try {
+        const event = JSON.parse(line);
+        if (event.type === "test" && event.event) {
+          results.push({
+            name: event.name,
+            status: event.event === "ok" ? "passed" : event.event === "ignored" ? "skipped" : "failed",
+            duration: 0,
+            errorMessage: event.stdout,
+          });
+        }
+      } catch {
+        // Not a JSON line, ignore
+      }
+    }
+
+    if (results.length === 0) {
+      return this.parseCargoTestBasicOutput(output, _exitCode);
+    }
+
+    return {
+      framework: "cargo",
+      totalTests: results.length,
+      passed: results.filter(r => r.status === "passed").length,
+      failed: results.filter(r => r.status === "failed").length,
+      skipped: results.filter(r => r.status === "skipped").length,
+      duration: 0,
+      results,
+      rawOutput: output,
+    };
+  }
+
+  private parseCargoTestBasicOutput(output: string, _exitCode: number | undefined): TestRunResult {
+    const results: TestResult[] = [];
+
+    // Parse standard cargo test output
+    // test module::test_name ... ok
+    // test module::test_name ... FAILED
+    // test module::test_name ... ignored
+    const testPattern = /test\s+([\w:]+)\s+\.\.\.\s+(ok|FAILED|ignored)/g;
+    let match;
+    while ((match = testPattern.exec(output)) !== null) {
+      results.push({
+        name: match[1],
+        status: match[2] === "ok" ? "passed" : match[2] === "ignored" ? "skipped" : "failed",
+        duration: 0,
+      });
+    }
+
+    // Parse summary: test result: ok. X passed; Y failed; Z ignored
+    const summaryMatch = /test result:.*?(\d+) passed.*?(\d+) failed.*?(\d+) ignored/i.exec(output);
+    let passed = results.filter(r => r.status === "passed").length;
+    let failed = results.filter(r => r.status === "failed").length;
+    let skipped = results.filter(r => r.status === "skipped").length;
+
+    if (summaryMatch) {
+      passed = parseInt(summaryMatch[1], 10);
+      failed = parseInt(summaryMatch[2], 10);
+      skipped = parseInt(summaryMatch[3], 10);
+    }
+
+    return {
+      framework: "cargo",
+      totalTests: passed + failed + skipped,
+      passed,
+      failed,
+      skipped,
+      duration: 0,
+      results,
+      rawOutput: output,
+    };
+  }
+
+  private parseDotnetTestOutput(output: string, _exitCode: number | undefined): TestRunResult {
+    const results: TestResult[] = [];
+
+    // Parse dotnet test console output
+    // Passed TestName [< 1 ms]
+    // Failed TestName [< 1 ms]
+    // Skipped TestName
+    const passedPattern = /Passed\s+([\w.]+)/g;
+    const failedPattern = /Failed\s+([\w.]+)/g;
+    const skippedPattern = /Skipped\s+([\w.]+)/g;
+
+    let match;
+    while ((match = passedPattern.exec(output)) !== null) {
+      results.push({
+        name: match[1],
+        status: "passed",
+        duration: 0,
+      });
+    }
+
+    while ((match = failedPattern.exec(output)) !== null) {
+      // Try to extract error message
+      const errorMatch = new RegExp(`${match[1]}[\\s\\S]*?Message:\\s*([^\\n]+)`, "m").exec(output);
+      results.push({
+        name: match[1],
+        status: "failed",
+        duration: 0,
+        errorMessage: errorMatch?.[1],
+      });
+    }
+
+    while ((match = skippedPattern.exec(output)) !== null) {
+      results.push({
+        name: match[1],
+        status: "skipped",
+        duration: 0,
+      });
+    }
+
+    // Parse summary: Passed: X, Failed: Y, Skipped: Z
+    const summaryMatch = /Passed:\s*(\d+).*?Failed:\s*(\d+).*?Skipped:\s*(\d+)/i.exec(output);
+    let passed = results.filter(r => r.status === "passed").length;
+    let failed = results.filter(r => r.status === "failed").length;
+    let skipped = results.filter(r => r.status === "skipped").length;
+
+    if (summaryMatch) {
+      passed = parseInt(summaryMatch[1], 10);
+      failed = parseInt(summaryMatch[2], 10);
+      skipped = parseInt(summaryMatch[3], 10);
+    }
+
+    return {
+      framework: "dotnet",
+      totalTests: passed + failed + skipped,
+      passed,
+      failed,
+      skipped,
       duration: 0,
       results,
       rawOutput: output,

@@ -5,6 +5,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Built with GitHub Copilot CLI](https://img.shields.io/badge/Built%20with-GitHub%20Copilot%20CLI-blue)](https://github.com/github/gh-copilot)
 [![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
+[![npm version](https://img.shields.io/npm/v/hambugsy)](https://www.npmjs.com/package/hambugsy)
+
+---
+
+## Demo
+
+[![asciicast](https://asciinema.org/a/9xGDgQTIJ4xWC9PT.svg)](https://asciinema.org/a/9xGDgQTIJ4xWC9PT)
 
 ---
 

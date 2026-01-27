@@ -3,7 +3,7 @@ import ora, { Ora } from "ora";
 import chalk from "chalk";
 import { glob } from "glob";
 import { resolve, relative, join, dirname, basename } from "path";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, writeFile, stat } from "fs/promises";
 import { JavaParser, JavaParseResult } from "../../parser/java/parser.js";
 import { CopilotBridge, getCopilotBridge } from "../../services/copilot.js";
 import type {
@@ -155,6 +155,22 @@ async function runSuggest(path: string, options: SuggestOptions): Promise<number
 
 async function discoverFiles(basePath: string, recursive: boolean): Promise<string[]> {
   const resolvedPath = resolve(basePath);
+
+  // Check if path is a file or directory
+  try {
+    const stats = await stat(resolvedPath);
+    if (stats.isFile()) {
+      // If it's a Java file, return it directly
+      if (resolvedPath.endsWith(".java")) {
+        return [resolvedPath];
+      }
+      return [];
+    }
+  } catch {
+    // Path doesn't exist, try glob anyway
+  }
+
+  // It's a directory, use glob
   const pattern = recursive ? "**/*.java" : "*.java";
 
   return glob(pattern, {

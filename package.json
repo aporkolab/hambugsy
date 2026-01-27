@@ -25,8 +25,26 @@
     "ai",
     "java",
     "junit",
+    "jest",
+    "vitest",
+    "pytest",
+    "go-test",
+    "cargo-test",
+    "nunit",
+    "xunit",
+    "mstest",
     "code-analysis",
-    "developer-tools"
+    "developer-tools",
+    "typescript",
+    "python",
+    "golang",
+    "rust",
+    "csharp"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "author": "APorkolab",
   "license": "MIT",

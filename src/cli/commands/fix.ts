@@ -4,6 +4,7 @@ import chalk from "chalk";
 import { glob } from "glob";
 import { resolve } from "path";
 import { readFile, writeFile } from "fs/promises";
+import { readFileSync } from "fs";
 import { createInterface } from "readline";
 import { JavaParser } from "../../parser/java/parser.js";
 import { TypeScriptParser } from "../../parser/typescript/parser.js";
@@ -11,7 +12,7 @@ import { PythonParser } from "../../parser/python/parser.js";
 import { CopilotBridge, getCopilotBridge } from "../../services/copilot.js";
 import { GitService, getGitService } from "../../services/git.js";
 import { createVerdictEngine } from "../../verdict/engine.js";
-import type { DiagnosticResult, AnalysisResult, TestSourcePair } from "../../core/types.js";
+import type { DiagnosticResult, AnalysisResult, TestSourcePair, TestCase, SourceMethod, Expectation, Behavior } from "../../core/types.js";
 
 // ============================================================================
 // Types
@@ -141,6 +142,35 @@ async function runFix(path: string, options: FixOptions): Promise<number> {
 // Analysis
 // ============================================================================
 
+interface ParseResult {
+  tests: TestCase[];
+  methods: SourceMethod[];
+}
+
+async function parseFile(filePath: string): Promise<ParseResult> {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+
+  switch (ext) {
+    case "java":
+      const javaParser = new JavaParser(filePath);
+      return javaParser.parseFile();
+
+    case "ts":
+    case "tsx":
+    case "js":
+    case "jsx":
+      const tsParser = new TypeScriptParser(filePath);
+      return tsParser.parseFile();
+
+    case "py":
+      const pyParser = new PythonParser(filePath);
+      return pyParser.parseFile();
+
+    default:
+      return { tests: [], methods: [] };
+  }
+}
+
 async function analyzeFiles(
   basePath: string,
   options: FixOptions,
@@ -160,84 +190,84 @@ async function analyzeFiles(
     return [];
   }
 
-  const git = getGitService(resolvedPath);
-  const verdictEngine = createVerdictEngine(copilot, git);
-  const results: DiagnosticResult[] = [];
+  // Parse all files first and categorize as test or source files
+  const testFiles: Map<string, ParseResult> = new Map();
+  const sourceFiles: Map<string, ParseResult> = new Map();
 
   for (const file of files) {
     try {
-      const pairs = await parseAndCorrelate(file);
+      const parseResult = await parseFile(file);
 
-      for (const pair of pairs) {
-        const analysis = await createAnalysis(pair, git);
-        const verdict = await verdictEngine.determine(analysis);
-
-        // Filter based on options
-        if (options.filter === "bugs" && verdict.type !== "CODE_BUG") continue;
-        if (options.filter === "tests" && verdict.type !== "OUTDATED_TEST") continue;
-
-        if (verdict.type === "CODE_BUG" || verdict.type === "OUTDATED_TEST") {
-          results.push({
-            testName: pair.test.name,
-            testFile: pair.test.filePath,
-            verdict,
-            confidence: verdict.confidence,
-            reasoning: verdict.explanation,
-            suggestions: verdict.recommendation.suggestedFix
-              ? [verdict.recommendation.suggestedFix]
-              : [],
-          });
-        }
+      // Categorize as test or source file
+      if (parseResult.tests.length > 0) {
+        testFiles.set(file, parseResult);
+      }
+      if (parseResult.methods.length > 0) {
+        sourceFiles.set(file, parseResult);
       }
     } catch {
       // Skip files that can't be parsed
     }
   }
 
+  // Correlate tests to methods ACROSS files (not just within the same file)
+  const pairs = correlateTestsToMethods(testFiles, sourceFiles);
+
+  if (pairs.length === 0) {
+    return [];
+  }
+
+  const git = getGitService(resolvedPath);
+  const verdictEngine = createVerdictEngine(copilot, git);
+  const results: DiagnosticResult[] = [];
+
+  for (const pair of pairs) {
+    try {
+      const analysis = await createAnalysis(pair, git, copilot);
+      const verdict = await verdictEngine.determine(analysis);
+
+      // Filter based on options
+      if (options.filter === "bugs" && verdict.type !== "CODE_BUG") continue;
+      if (options.filter === "tests" && verdict.type !== "OUTDATED_TEST") continue;
+
+      if (verdict.type === "CODE_BUG" || verdict.type === "OUTDATED_TEST") {
+        results.push({
+          testName: pair.test.name,
+          testFile: pair.test.filePath,
+          verdict,
+          confidence: verdict.confidence,
+          reasoning: verdict.explanation,
+          suggestions: verdict.recommendation.suggestedFix
+            ? [verdict.recommendation.suggestedFix]
+            : [],
+        });
+      }
+    } catch {
+      // Skip pairs that can't be analyzed
+    }
+  }
+
   return results;
 }
 
-async function parseAndCorrelate(filePath: string): Promise<TestSourcePair[]> {
-  const ext = filePath.split(".").pop()?.toLowerCase();
-  let tests: Array<{ name: string; filePath: string; lineNumber: number; endLine: number; framework: string; assertions: Array<{ type: string; expected: string | null; actual: string | null; lineNumber: number; raw: string }>; body: string }> = [];
-  let methods: Array<{ name: string; filePath: string; lineNumber: number; endLine: number; parameters: Array<{ name: string; type: string; defaultValue?: string }>; returnType: string; body: string; className?: string }> = [];
-
-  if (ext === "java") {
-    const parser = new JavaParser(filePath);
-    const result = await parser.parseFile();
-    tests = result.tests;
-    methods = result.methods;
-  } else if (ext === "ts" || ext === "tsx" || ext === "js" || ext === "jsx") {
-    const parser = new TypeScriptParser(filePath);
-    const result = await parser.parseFile();
-    tests = result.tests;
-    methods = result.methods;
-  } else if (ext === "py") {
-    const parser = new PythonParser(filePath);
-    const result = await parser.parseFile();
-    tests = result.tests;
-    methods = result.methods;
-  }
-
-  // Simple correlation by name
+function correlateTestsToMethods(
+  testFiles: Map<string, ParseResult>,
+  sourceFiles: Map<string, ParseResult>
+): TestSourcePair[] {
   const pairs: TestSourcePair[] = [];
 
-  for (const test of tests) {
-    const testNameLower = test.name.toLowerCase();
+  // Collect all source methods
+  const allMethods: SourceMethod[] = [];
+  for (const parseResult of sourceFiles.values()) {
+    allMethods.push(...parseResult.methods);
+  }
 
-    for (const method of methods) {
-      const methodNameLower = method.name.toLowerCase();
-
-      if (
-        testNameLower.includes(methodNameLower) ||
-        test.body.includes(`${method.name}(`)
-      ) {
-        pairs.push({
-          test: test as TestSourcePair["test"],
-          source: method as TestSourcePair["source"],
-          confidence: 0.8,
-          correlationType: "NAMING_CONVENTION",
-        });
+  // For each test, try to find a matching source method
+  for (const parseResult of testFiles.values()) {
+    for (const test of parseResult.tests) {
+      const match = findMatchingMethod(test, allMethods);
+      if (match) {
+        pairs.push(match);
       }
     }
   }
@@ -245,32 +275,114 @@ async function parseAndCorrelate(filePath: string): Promise<TestSourcePair[]> {
   return pairs;
 }
 
+function findMatchingMethod(
+  test: TestCase,
+  methods: SourceMethod[]
+): TestSourcePair | null {
+  const testName = test.name.toLowerCase();
+
+  // Strategy 1: Naming convention (testMethodName -> methodName)
+  const methodNameFromTest = extractMethodNameFromTest(testName);
+
+  for (const method of methods) {
+    const methodName = method.name.toLowerCase();
+
+    // Direct match
+    if (methodName === methodNameFromTest) {
+      return {
+        test,
+        source: method,
+        confidence: 0.9,
+        correlationType: "NAMING_CONVENTION",
+      };
+    }
+
+    // Contains match
+    if (testName.includes(methodName) || methodNameFromTest.includes(methodName)) {
+      return {
+        test,
+        source: method,
+        confidence: 0.7,
+        correlationType: "NAMING_CONVENTION",
+      };
+    }
+  }
+
+  // Strategy 2: Look for method calls in test body
+  for (const method of methods) {
+    if (test.body.includes(`${method.name}(`)) {
+      return {
+        test,
+        source: method,
+        confidence: 0.8,
+        correlationType: "CALL_GRAPH",
+      };
+    }
+  }
+
+  return null;
+}
+
+function extractMethodNameFromTest(testName: string): string {
+  // Remove common test prefixes
+  let name = testName
+    .replace(/^test_?/i, "")
+    .replace(/^should_?/i, "")
+    .replace(/_?test$/i, "");
+
+  // Convert camelCase "testMethodName" -> "methodname"
+  return name.toLowerCase();
+}
+
 async function createAnalysis(
   pair: TestSourcePair,
-  git: GitService
+  git: GitService,
+  copilot: CopilotBridge
 ): Promise<AnalysisResult> {
   const [testHistory, sourceHistory] = await Promise.all([
     git.getHistory(pair.test.filePath, 1).catch(() => []),
     git.getHistory(pair.source.filePath, 1).catch(() => []),
   ]);
 
+  // Build expectations and behavior
+  let testExpectation: Expectation;
+  let codeBehavior: Behavior;
+
+  try {
+    const [expectationAnalysis, behaviorAnalysis] = await Promise.all([
+      copilot.analyzeTestExpectation(pair.test.body),
+      copilot.analyzeCodeBehavior(pair.source.body),
+    ]);
+
+    testExpectation = {
+      description: expectationAnalysis.description,
+      expectedBehavior: expectationAnalysis.description,
+      inputValues: expectationAnalysis.expectedInputs,
+      expectedOutput: expectationAnalysis.expectedOutputs[0] ?? null,
+      expectedExceptions: expectationAnalysis.expectedExceptions,
+    };
+
+    codeBehavior = {
+      description: behaviorAnalysis.description,
+      actualBehavior: behaviorAnalysis.description,
+      codePathTaken: [],
+      returnValue: behaviorAnalysis.returnBehavior || null,
+      thrownExceptions: behaviorAnalysis.errorConditions,
+    };
+  } catch {
+    // Fallback if Copilot is not available
+    testExpectation = buildExpectationFromAssertions(pair.test as TestCase);
+    codeBehavior = buildBehaviorFromMethod(pair.source as SourceMethod);
+  }
+
+  // Detect divergence using the same logic as analyze command
+  const divergence = detectDivergence(pair, testExpectation, codeBehavior);
+
   return {
     pair,
-    testExpectation: {
-      description: "Test expectation",
-      expectedBehavior: "",
-      inputValues: [],
-      expectedOutput: null,
-      expectedExceptions: [],
-    },
-    codeBehavior: {
-      description: "Code behavior",
-      actualBehavior: "",
-      codePathTaken: [],
-      returnValue: null,
-      thrownExceptions: [],
-    },
-    divergence: null,
+    testExpectation,
+    codeBehavior,
+    divergence,
     gitContext: {
       lastTestChange: testHistory[0]
         ? { ...testHistory[0], filesChanged: [] }
@@ -282,6 +394,232 @@ async function createAnalysis(
       blame: null,
     },
   };
+}
+
+function buildExpectationFromAssertions(test: TestCase): Expectation {
+  const assertions = test.assertions;
+
+  return {
+    description: `Test ${test.name} with ${assertions.length} assertion(s)`,
+    expectedBehavior: assertions.map((a) => a.raw).join("; "),
+    inputValues: [],
+    expectedOutput: assertions.find((a) => a.type === "equals")?.expected ?? null,
+    expectedExceptions: assertions
+      .filter((a) => a.type === "throws")
+      .map((a) => a.expected ?? "Exception"),
+  };
+}
+
+function buildBehaviorFromMethod(method: SourceMethod): Behavior {
+  return {
+    description: `Method ${method.name} returns ${method.returnType}`,
+    actualBehavior: `${method.name}(${method.parameters.map((p) => p.type).join(", ")}) -> ${method.returnType}`,
+    codePathTaken: [],
+    returnValue: method.returnType !== "void" ? method.returnType : null,
+    thrownExceptions: [],
+  };
+}
+
+function detectDivergence(
+  pair: TestSourcePair,
+  expectation: Expectation,
+  behavior: Behavior
+): AnalysisResult["divergence"] {
+  // Priority 1: Exception mismatch detection
+  if (
+    expectation.expectedExceptions.length > 0 &&
+    behavior.thrownExceptions.length === 0
+  ) {
+    return {
+      type: "EXCEPTION_MISMATCH",
+      description: `Test expects exception but code may not throw`,
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: expectation.expectedExceptions.join(", "),
+      actual: "no exception",
+    };
+  }
+
+  // Priority 2: Compare expected output vs return value (from AI analysis)
+  if (expectation.expectedOutput && behavior.returnValue) {
+    const expectedNorm = normalizeValue(expectation.expectedOutput);
+    const actualNorm = normalizeValue(behavior.returnValue);
+
+    if (expectedNorm !== actualNorm && expectedNorm !== "unknown" && actualNorm !== "unknown") {
+      return {
+        type: "RETURN_VALUE_MISMATCH",
+        description: `Expected output doesn't match code behavior`,
+        testLine: pair.test.lineNumber,
+        codeLine: pair.source.lineNumber,
+        expected: expectation.expectedOutput,
+        actual: behavior.returnValue,
+      };
+    }
+  }
+
+  // Priority 3: Semantic comparison of descriptions
+  const semanticDivergence = detectSemanticDivergence(
+    expectation.expectedBehavior,
+    behavior.actualBehavior,
+    pair
+  );
+  if (semanticDivergence) {
+    return semanticDivergence;
+  }
+
+  // Priority 4: Parse assertions from test body for numeric comparisons
+  const assertionDivergence = detectAssertionDivergence(pair);
+  if (assertionDivergence) {
+    return assertionDivergence;
+  }
+
+  // No divergence detected
+  return null;
+}
+
+function normalizeValue(value: string): string {
+  if (!value) return "unknown";
+
+  // Remove common wrappers
+  let normalized = value.trim().toLowerCase();
+  normalized = normalized.replace(/^["']|["']$/g, "");
+
+  // Try to extract numeric value
+  const numMatch = normalized.match(/(-?\d+\.?\d*)/);
+  if (numMatch) {
+    return numMatch[1];
+  }
+
+  // Return cleaned string
+  return normalized;
+}
+
+function detectSemanticDivergence(
+  expectedBehavior: string,
+  actualBehavior: string,
+  pair: TestSourcePair
+): AnalysisResult["divergence"] | null {
+  if (!expectedBehavior || !actualBehavior) return null;
+
+  const expected = expectedBehavior.toLowerCase();
+  const actual = actualBehavior.toLowerCase();
+
+  // Look for percentage/discount mismatches
+  const expectedPercent = expected.match(/(\d+)\s*%/);
+  const actualPercent = actual.match(/(\d+)\s*%/);
+  if (expectedPercent && actualPercent && expectedPercent[1] !== actualPercent[1]) {
+    return {
+      type: "RETURN_VALUE_MISMATCH",
+      description: `Percentage mismatch: test expects ${expectedPercent[1]}%, code applies ${actualPercent[1]}%`,
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: `${expectedPercent[1]}%`,
+      actual: `${actualPercent[1]}%`,
+    };
+  }
+
+  // Look for multiplier/factor mismatches (e.g., 0.90 vs 0.85)
+  const expectedFactor = expected.match(/(\d+\.\d+)/);
+  const actualFactor = actual.match(/(\d+\.\d+)/);
+  if (expectedFactor && actualFactor && expectedFactor[1] !== actualFactor[1]) {
+    return {
+      type: "RETURN_VALUE_MISMATCH",
+      description: `Value mismatch: test expects ${expectedFactor[1]}, code uses ${actualFactor[1]}`,
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: expectedFactor[1],
+      actual: actualFactor[1],
+    };
+  }
+
+  return null;
+}
+
+function detectAssertionDivergence(
+  pair: TestSourcePair
+): AnalysisResult["divergence"] | null {
+  const testBody = pair.test.body;
+
+  // Read full source file to get class-level constants (not just method body)
+  let sourceBody = pair.source.body;
+  try {
+    sourceBody = readFileSync(pair.source.filePath, "utf8");
+  } catch {
+    // Fall back to method body if file read fails
+  }
+
+  // Extract numeric assertions from test (expected values)
+  const assertionPatterns = [
+    /assertEquals\s*\(\s*(-?\d+\.?\d*)/g,
+    /expect\s*\([^)]+\)\s*\.toBe\s*\(\s*(-?\d+\.?\d*)/g,
+    /assert\.equal\s*\([^,]+,\s*(-?\d+\.?\d*)/g,
+    /assertEqual\s*\([^,]+,\s*(-?\d+\.?\d*)/g,
+    /toEqual\s*\(\s*(-?\d+\.?\d*)/g,
+  ];
+
+  const expectedValues: number[] = [];
+  for (const pattern of assertionPatterns) {
+    let match;
+    while ((match = pattern.exec(testBody)) !== null) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val)) expectedValues.push(val);
+    }
+  }
+
+  // Extract percentage/rate constants from source code
+  const constantPatterns = [
+    /(?:DISCOUNT|RATE|PERCENT)[A-Z_]*\s*=\s*(-?\d+\.?\d*)/gi,
+    /(?:discount|rate|percent)\s*=\s*(-?\d+\.?\d*)/gi,
+    /=\s*(-?\d+\.?\d*)\s*;\s*\/\/.*(?:discount|rate|percent)/gi,
+  ];
+
+  const sourceConstants: number[] = [];
+  for (const pattern of constantPatterns) {
+    let match;
+    while ((match = pattern.exec(sourceBody)) !== null) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val)) sourceConstants.push(val);
+    }
+  }
+
+  // Check for discount percentage mismatches
+  for (const expectedVal of expectedValues) {
+    if (expectedVal >= 80 && expectedVal <= 99) {
+      const impliedDiscountPercent = 100 - expectedVal;
+
+      for (const constant of sourceConstants) {
+        if (constant > 0 && constant < 1) {
+          const actualDiscountPercent = Math.round(constant * 100);
+
+          if (actualDiscountPercent !== impliedDiscountPercent && Math.abs(actualDiscountPercent - impliedDiscountPercent) <= 20) {
+            return {
+              type: "RETURN_VALUE_MISMATCH",
+              description: `Discount mismatch: test expects ${impliedDiscountPercent}% discount (result=${expectedVal}), but code applies ${actualDiscountPercent}% discount (${constant})`,
+              testLine: pair.test.lineNumber,
+              codeLine: pair.source.lineNumber,
+              expected: `${expectedVal} (${impliedDiscountPercent}% discount)`,
+              actual: `${100 - actualDiscountPercent} (${actualDiscountPercent}% discount)`,
+            };
+          }
+        } else if (constant >= 1 && constant <= 50) {
+          const actualDiscountPercent = constant;
+
+          if (actualDiscountPercent !== impliedDiscountPercent && Math.abs(actualDiscountPercent - impliedDiscountPercent) <= 20) {
+            return {
+              type: "RETURN_VALUE_MISMATCH",
+              description: `Discount mismatch: test expects ${impliedDiscountPercent}% discount (result=${expectedVal}), but code applies ${actualDiscountPercent}% discount`,
+              testLine: pair.test.lineNumber,
+              codeLine: pair.source.lineNumber,
+              expected: `${expectedVal} (${impliedDiscountPercent}% discount)`,
+              actual: `${100 - actualDiscountPercent} (${actualDiscountPercent}% discount)`,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 // ============================================================================
@@ -296,37 +634,89 @@ async function generateFixSuggestions(
   const suggestions: FixSuggestion[] = [];
 
   for (const result of results) {
-    if (!result.verdict.recommendation.suggestedFix) continue;
+    // Only handle OUTDATED_TEST verdicts for now
+    if (result.verdict.type !== "OUTDATED_TEST") continue;
 
-    const fix = result.verdict.recommendation.suggestedFix;
+    // Try to use pre-generated suggestedFix first
+    if (result.verdict.recommendation.suggestedFix) {
+      const fix = result.verdict.recommendation.suggestedFix;
+      const lines = fix.split("\n");
+      let originalLine = "";
+      let suggestedLine = "";
 
-    // Parse the fix to extract line changes
-    const lines = fix.split("\n");
-    let originalLine = "";
-    let suggestedLine = "";
+      for (const line of lines) {
+        if (line.startsWith("-") && !line.startsWith("---")) {
+          originalLine = line.substring(1).trim();
+        } else if (line.startsWith("+") && !line.startsWith("+++")) {
+          suggestedLine = line.substring(1).trim();
+        }
+      }
 
-    for (const line of lines) {
-      if (line.startsWith("-") && !line.startsWith("---")) {
-        originalLine = line.substring(1).trim();
-      } else if (line.startsWith("+") && !line.startsWith("+++")) {
-        suggestedLine = line.substring(1).trim();
+      if (originalLine && suggestedLine) {
+        suggestions.push({
+          file: result.testFile,
+          lineNumber: 0,
+          originalLine,
+          suggestedLine,
+          reason: result.verdict.reason,
+          verdictType: result.verdict.type,
+        });
+        continue;
       }
     }
 
-    if (originalLine && suggestedLine) {
-      const targetFile =
-        result.verdict.type === "OUTDATED_TEST"
-          ? result.testFile
-          : result.verdict.recommendation.affectedFiles[0] ?? result.testFile;
+    // Generate fix from the explanation (which contains the detailed divergence info)
+    // Parse patterns like "test expects X% discount (result=Y), but code applies Z% discount"
+    const explanation = result.verdict.explanation;
 
-      suggestions.push({
-        file: targetFile,
-        lineNumber: 0, // Will be found when applying
-        originalLine,
-        suggestedLine,
-        reason: result.verdict.reason,
-        verdictType: result.verdict.type,
-      });
+    // Pattern: "Discount mismatch: test expects 10% discount (result=90), but code applies 15% discount (0.15)"
+    const discountMatch = explanation.match(/test expects (\d+)% discount \(result=(\d+(?:\.\d+)?)\).*code applies (\d+)% discount/i);
+    if (discountMatch) {
+      const oldValue = discountMatch[2];  // The old expected value (e.g., 90)
+      const newDiscountPercent = parseInt(discountMatch[3], 10);  // e.g., 15
+      const newValue = String(100 - newDiscountPercent);  // e.g., 85
+
+      // Read test file to find the assertion
+      try {
+        const testContent = readFileSync(result.testFile, "utf8");
+        const lines = testContent.split("\n");
+
+        // Find assertion with the old value (skip comments)
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const trimmed = line.trim();
+
+          // Skip comment lines
+          if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
+            continue;
+          }
+
+          // Match assertEquals(90.0, ...) or assertEquals(90, ...) or expect(...).toBe(90)
+          if (
+            (line.includes("assertEquals") || line.includes("assertThat") || line.includes("expect(") || line.includes(".toBe(")) &&
+            (line.includes(oldValue) || line.includes(`${oldValue}.0`))
+          ) {
+            const originalLine = line.trim();
+            const suggestedLine = originalLine
+              .replace(new RegExp(`${oldValue}\\.0`, "g"), `${newValue}.0`)
+              .replace(new RegExp(`\\b${oldValue}\\b`, "g"), newValue);
+
+            if (originalLine !== suggestedLine) {
+              suggestions.push({
+                file: result.testFile,
+                lineNumber: i + 1,
+                originalLine,
+                suggestedLine,
+                reason: `Update assertion: ${oldValue} → ${newValue} (${newDiscountPercent}% discount)`,
+                verdictType: result.verdict.type,
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+        // Can't read file
+      }
     }
   }
 

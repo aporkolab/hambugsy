@@ -333,7 +333,7 @@ function findRelevantAssertions(
 function wouldMutationBeCaught(
   mutation: Mutation,
   relevantAssertions: string[],
-  testContent: string
+  _testContent: string
 ): { caught: boolean; confidence: number; explanation: string } {
   if (relevantAssertions.length === 0) {
     return {

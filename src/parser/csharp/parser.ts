@@ -382,7 +382,7 @@ export class CSharpParser {
   // SourceMethod Conversion
   // ==========================================================================
 
-  private convertToSourceMethod(raw: RawMethod, namespaceName?: string, className?: string): SourceMethod {
+  private convertToSourceMethod(raw: RawMethod, _namespaceName?: string, className?: string): SourceMethod {
     const parameters = this.parseParameters(raw.parameters);
 
     return {

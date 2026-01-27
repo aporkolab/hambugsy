@@ -260,9 +260,12 @@ hambugsy init --force  # Overwrite existing config
 
 | Language | Test Framework | Status |
 |----------|----------------|--------|
-| Java | JUnit 4/5 | ✅ Supported |
+| Java | JUnit 4/5, TestNG | ✅ Supported |
 | TypeScript/JavaScript | Jest, Vitest, Mocha | ✅ Supported |
 | Python | pytest, unittest | ✅ Supported |
+| Go | go test, testify | ✅ Supported |
+| Rust | #[test], tokio::test | ✅ Supported |
+| C# | NUnit, xUnit, MSTest | ✅ Supported |
 
 ---
 
@@ -503,11 +506,14 @@ npm run package
 
 ### Features
 
-- Right-click context menu on test files
-- Problems panel integration with diagnostics
-- Results tree view in Explorer sidebar
-- Auto-analyze on save (optional)
-- Quick fix suggestions
+- **CodeLens Integration** - Inline verdict display directly on test methods
+- **Quick Fix Actions** - One-click fixes for detected issues
+- **Problems Panel** - Full diagnostic integration with VS Code
+- **Results Tree View** - Dedicated sidebar panel for analysis results
+- **Context Menu** - Right-click on any test file to analyze
+- **Auto-analyze on Save** - Optional real-time analysis
+- **Multi-language Support** - Java, TypeScript, JavaScript, Python, Go, Rust, C#
+- **Detailed Webview Panel** - Rich HTML view for analysis results
 
 See [vscode-extension/README.md](./vscode-extension/README.md) for full documentation.
 
@@ -529,6 +535,14 @@ See [vscode-extension/README.md](./vscode-extension/README.md) for full document
 - [x] Interactive mode (`--interactive`)
 - [x] Test name filter (`--test`)
 - [x] VS Code extension
+- [x] Go language support (go test, testify)
+- [x] Rust language support (#[test], tokio::test)
+- [x] C# language support (NUnit, xUnit, MSTest)
+- [x] Real test execution integration
+- [x] AST-based code analysis
+- [x] Mutation testing for value mismatch detection
+- [x] Advanced divergence detection
+- [x] VS Code CodeLens and Quick Fix support
 
 ---
 

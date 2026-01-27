@@ -12,6 +12,7 @@ import { PythonParser } from "../../parser/python/parser.js";
 import { CopilotBridge, getCopilotBridge } from "../../services/copilot.js";
 import { GitService, getGitService } from "../../services/git.js";
 import { createVerdictEngine } from "../../verdict/engine.js";
+import { detectDivergenceAdvanced } from "../../analysis/divergence-detector.js";
 import type { DiagnosticResult, AnalysisResult, TestSourcePair, TestCase, SourceMethod, Expectation, Behavior } from "../../core/types.js";
 
 // ============================================================================
@@ -375,8 +376,14 @@ async function createAnalysis(
     codeBehavior = buildBehaviorFromMethod(pair.source as SourceMethod);
   }
 
-  // Detect divergence using the same logic as analyze command
-  const divergence = detectDivergence(pair, testExpectation, codeBehavior);
+  // Use advanced divergence detection (same as analyze command)
+  const advancedResult = await detectDivergenceAdvanced(pair, copilot);
+  let divergence = advancedResult.divergence;
+
+  // Fallback to local detection if advanced finds nothing
+  if (!divergence) {
+    divergence = detectDivergence(pair, testExpectation, codeBehavior);
+  }
 
   return {
     pair,
@@ -666,32 +673,115 @@ async function generateFixSuggestions(
     }
 
     // Generate fix from the explanation (which contains the detailed divergence info)
-    // Parse patterns like "test expects X% discount (result=Y), but code applies Z% discount"
     const explanation = result.verdict.explanation;
 
-    // Pattern: "Discount mismatch: test expects 10% discount (result=90), but code applies 15% discount (0.15)"
-    const discountMatch = explanation.match(/test expects (\d+)% discount \(result=(\d+(?:\.\d+)?)\).*code applies (\d+)% discount/i);
-    if (discountMatch) {
-      const oldValue = discountMatch[2];  // The old expected value (e.g., 90)
-      const newDiscountPercent = parseInt(discountMatch[3], 10);  // e.g., 15
-      const newValue = String(100 - newDiscountPercent);  // e.g., 85
+    // Pattern 1: "Value mismatch: test expects X but code uses Y"
+    const valueMismatchMatch = explanation.match(/Value mismatch: test expects (\d+(?:\.\d+)?) but code uses (\d+(?:\.\d+)?)/i);
+    if (valueMismatchMatch) {
+      const expectedValue = valueMismatchMatch[1];
+      const actualValue = valueMismatchMatch[2];
 
-      // Read test file to find the assertion
       try {
         const testContent = readFileSync(result.testFile, "utf8");
         const lines = testContent.split("\n");
 
-        // Find assertion with the old value (skip comments)
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           const trimmed = line.trim();
 
-          // Skip comment lines
-          if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
-            continue;
-          }
+          if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
 
-          // Match assertEquals(90.0, ...) or assertEquals(90, ...) or expect(...).toBe(90)
+          // Find assertion containing the expected value
+          if (
+            (line.includes("assertEquals") || line.includes("expect(") || line.includes(".toBe(") || line.includes(".toEqual(")) &&
+            (line.includes(expectedValue) || line.includes(`${expectedValue}.0`))
+          ) {
+            const originalLine = line.trim();
+            // Replace expected with actual (since code is correct and test is outdated)
+            const suggestedLine = originalLine
+              .replace(new RegExp(`${expectedValue}\\.0`, "g"), `${actualValue}.0`)
+              .replace(new RegExp(`\\b${expectedValue}\\b`, "g"), actualValue);
+
+            if (originalLine !== suggestedLine) {
+              suggestions.push({
+                file: result.testFile,
+                lineNumber: i + 1,
+                originalLine,
+                suggestedLine,
+                reason: `Update assertion: ${expectedValue} → ${actualValue}`,
+                verdictType: result.verdict.type,
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+        // Can't read file
+      }
+      continue;
+    }
+
+    // Pattern 2: "Expected: X, Got: Y" from standard divergence info
+    const expectedGotMatch = explanation.match(/Expected:\s*(\d+(?:\.\d+)?),\s*Got:\s*(\d+(?:\.\d+)?)/i);
+    if (expectedGotMatch) {
+      const expectedValue = expectedGotMatch[1];
+      const actualValue = expectedGotMatch[2];
+
+      try {
+        const testContent = readFileSync(result.testFile, "utf8");
+        const lines = testContent.split("\n");
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const trimmed = line.trim();
+
+          if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+
+          if (
+            (line.includes("assertEquals") || line.includes("expect(") || line.includes(".toBe(") || line.includes(".toEqual(")) &&
+            (line.includes(expectedValue) || line.includes(`${expectedValue}.0`))
+          ) {
+            const originalLine = line.trim();
+            const suggestedLine = originalLine
+              .replace(new RegExp(`${expectedValue}\\.0`, "g"), `${actualValue}.0`)
+              .replace(new RegExp(`\\b${expectedValue}\\b`, "g"), actualValue);
+
+            if (originalLine !== suggestedLine) {
+              suggestions.push({
+                file: result.testFile,
+                lineNumber: i + 1,
+                originalLine,
+                suggestedLine,
+                reason: `Update assertion: ${expectedValue} → ${actualValue}`,
+                verdictType: result.verdict.type,
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+        // Can't read file
+      }
+      continue;
+    }
+
+    // Pattern 3: Legacy - "test expects X% discount (result=Y), but code applies Z% discount"
+    const discountMatch = explanation.match(/test expects (\d+)% discount \(result=(\d+(?:\.\d+)?)\).*code applies (\d+)% discount/i);
+    if (discountMatch) {
+      const oldValue = discountMatch[2];
+      const newDiscountPercent = parseInt(discountMatch[3], 10);
+      const newValue = String(100 - newDiscountPercent);
+
+      try {
+        const testContent = readFileSync(result.testFile, "utf8");
+        const lines = testContent.split("\n");
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const trimmed = line.trim();
+
+          if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+
           if (
             (line.includes("assertEquals") || line.includes("assertThat") || line.includes("expect(") || line.includes(".toBe(")) &&
             (line.includes(oldValue) || line.includes(`${oldValue}.0`))

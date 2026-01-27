@@ -16,6 +16,7 @@ import { CopilotBridge, getCopilotBridge, CopilotError } from "../../services/co
 import { GitService, getGitService } from "../../services/git.js";
 import { VerdictEngine, createVerdictEngine } from "../../verdict/engine.js";
 import { TestRunner, getTestRunner, type TestRunResult } from "../../services/test-runner.js";
+import { detectDivergenceAdvanced } from "../../analysis/divergence-detector.js";
 import type {
   DiagnosticResult,
   AnalysisResult,
@@ -633,8 +634,18 @@ async function buildAnalysisResult(
     codeBehavior = buildBehaviorFromMethod(pair.source);
   }
 
-  // Detect divergence (use real error message if available)
-  const divergence = detectDivergence(pair, testExpectation, codeBehavior, realErrorMessage);
+  // Use advanced divergence detection (combines AI + static analysis)
+  const advancedResult = await detectDivergenceAdvanced(
+    pair,
+    copilot,
+    realErrorMessage
+  );
+
+  // Fall back to legacy detection if advanced finds nothing
+  let divergence = advancedResult.divergence;
+  if (!divergence) {
+    divergence = detectDivergence(pair, testExpectation, codeBehavior, realErrorMessage);
+  }
 
   return {
     pair,

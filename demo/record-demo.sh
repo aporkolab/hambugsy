@@ -2,6 +2,9 @@
 # Hambugsy Full Demo Script
 # Run with: asciinema rec -c "./demo/record-demo.sh" demo.cast
 
+# Force colors in output
+export FORCE_COLOR=1
+
 # Use local build
 HAMBUGSY="node dist/index.js"
 

@@ -1,6 +1,6 @@
 {
   "name": "hambugsy",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "The CLI tool that tells you WHO is wrong: your test or your code. Uses GitHub Copilot CLI for AI-powered test failure diagnosis.",
   "type": "module",
   "main": "dist/index.js",

@@ -134,10 +134,16 @@ export class ConsoleReporter {
     // Separator
     this.printBoxLine("separator");
 
-    // Failing test info
-    this.printBoxContent(
-      `${EMOJI.CROSS} ${chalk.red("FAILING TEST:")} ${result.testName}`
-    );
+    // Test status - dynamic based on verdict
+    if (verdict.type === "PASSED") {
+      this.printBoxContent(
+        `${EMOJI.CHECK} ${chalk.green("PASSING TEST:")} ${result.testName}`
+      );
+    } else {
+      this.printBoxContent(
+        `${EMOJI.CROSS} ${chalk.red("FAILING TEST:")} ${result.testName}`
+      );
+    }
     this.printBoxContent("");
 
     // Analysis section

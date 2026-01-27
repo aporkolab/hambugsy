@@ -7,6 +7,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: "node18",
+  external: ["typescript"],
   banner: {
     js: "#!/usr/bin/env node",
   },

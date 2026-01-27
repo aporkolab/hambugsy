@@ -1,5 +1,16 @@
 # Hambugsy Examples & Use Cases
 
+> **Version:** 1.0.2 | **npm:** [npmjs.com/package/hambugsy](https://www.npmjs.com/package/hambugsy)
+
+## Supported Languages
+
+- Java (JUnit 4/5, TestNG)
+- TypeScript/JavaScript (Jest, Vitest, Mocha)
+- Python (pytest, unittest)
+- Go (go test, testify)
+- Rust (#[test], tokio::test)
+- C# (NUnit, xUnit, MSTest)
+
 ## Real-World Scenarios
 
 ---
@@ -377,7 +388,70 @@ $ hambugsy analyze ./src/calculator.py
 
 ---
 
-## Example 6: Multiple Issues in One File
+## Example 6: Go/testify
+
+### Scenario
+A Go service function's behavior changed but tests weren't updated.
+
+### Source Code
+```go
+// calculator.go
+
+package calculator
+
+// Calculate applies discount based on membership level
+func CalculateDiscount(price float64, isPremium bool) float64 {
+    if isPremium {
+        return price * 0.15 // Changed from 0.10
+    }
+    return price * 0.05
+}
+```
+
+### Test Code
+```go
+// calculator_test.go
+
+package calculator
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestPremiumDiscount(t *testing.T) {
+    result := CalculateDiscount(100.0, true)
+    assert.Equal(t, 10.0, result) // Expects old 10% discount
+}
+```
+
+### Hambugsy Analysis
+```bash
+$ hambugsy analyze ./calculator.go
+
+🍔 HAMBUGSY v1.0.2
+
+┌─────────────────────────────────────────────────────────────────┐
+│  📍 Function: CalculateDiscount() @ line 6                      │
+├─────────────────────────────────────────────────────────────────┤
+│  ❌ FAILING TEST: TestPremiumDiscount                           │
+│                                                                 │
+│  🔬 ANALYSIS:                                                   │
+│  ├── Test expects: price * 0.10 = 10.0                         │
+│  └── Code returns: price * 0.15 = 15.0                         │
+│                                                                 │
+│  🎯 VERDICT: OUTDATED TEST (confidence: 94%)                   │
+│                                                                 │
+│  💡 RECOMMENDATION:                                             │
+│  Update calculator_test.go line 12:                            │
+│  - assert.Equal(t, 10.0, result)                               │
+│  + assert.Equal(t, 15.0, result)                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Example 7: Multiple Issues in One File
 
 ```bash
 $ hambugsy analyze ./src/OrderService.java --verbose
@@ -440,7 +514,7 @@ Found: 5 methods, 8 tests
 
 ---
 
-## Example 7: Missing Test Suggestions (suggest command)
+## Example 8: Missing Test Suggestions (suggest command)
 
 ### Scenario
 Finding untested code paths and generating test suggestions.

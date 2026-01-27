@@ -1,8 +1,22 @@
 # Hambugsy Configuration Reference
 
+> **Version:** 1.0.2 | **npm:** [npmjs.com/package/hambugsy](https://www.npmjs.com/package/hambugsy)
+
 ## Overview
 
 Hambugsy uses YAML configuration files. By default, it looks for `.hambugsy.yml` in the current directory.
+
+## Supported Languages
+
+| Language | Test Frameworks | File Extensions |
+|----------|-----------------|-----------------|
+| Java | JUnit 4/5, TestNG | `.java` |
+| TypeScript | Jest, Vitest, Mocha | `.ts`, `.tsx` |
+| JavaScript | Jest, Vitest, Mocha | `.js`, `.jsx` |
+| Python | pytest, unittest | `.py` |
+| Go | go test, testify | `.go` |
+| Rust | #[test], tokio::test | `.rs` |
+| C# | NUnit, xUnit, MSTest | `.cs` |
 
 ---
 
@@ -457,6 +471,61 @@ ignore:
   methods:
     - "__init__"
     - "__str__"
+```
+
+### Go Project
+
+```yaml
+version: 1
+
+patterns:
+  source:
+    - "**/*.go"
+    - "!**/*_test.go"
+  test:
+    - "**/*_test.go"
+
+analysis:
+  languages:
+    go:
+      test_frameworks: [go-test, testify]
+```
+
+### Rust Project
+
+```yaml
+version: 1
+
+patterns:
+  source:
+    - "src/**/*.rs"
+    - "!src/**/*_test.rs"
+  test:
+    - "tests/**/*.rs"
+    - "src/**/*_test.rs"
+
+analysis:
+  languages:
+    rust:
+      test_frameworks: [rust-test, tokio-test]
+```
+
+### C# Project
+
+```yaml
+version: 1
+
+patterns:
+  source:
+    - "src/**/*.cs"
+  test:
+    - "tests/**/*.cs"
+    - "**/*Tests.cs"
+
+analysis:
+  languages:
+    csharp:
+      test_frameworks: [nunit, xunit, mstest]
 ```
 
 ### Monorepo Configuration

@@ -105,7 +105,7 @@ npm run typecheck
 ### Reporting Bugs
 
 **Before submitting a bug report:**
-1. Check the [issue tracker](https://github.com/hambugsy/hambugsy/issues) for existing reports
+1. Check the [issue tracker](https://github.com/APorkolab/hambugsy/issues) for existing reports
 2. Ensure you're using the latest version
 3. Collect relevant information (OS, Node version, error messages)
 
@@ -140,21 +140,29 @@ We love feature suggestions! Please include:
 
 ### Adding Language Support
 
+Currently supported languages:
+- **Java** (JUnit 4/5, TestNG)
+- **TypeScript/JavaScript** (Jest, Vitest, Mocha)
+- **Python** (pytest, unittest)
+- **Go** (go test, testify)
+- **Rust** (#[test], tokio::test)
+- **C#** (NUnit, xUnit, MSTest)
+
 Want to add support for a new language? Here's how:
 
 1. **Create Parser** in `src/parser/[language]/`
    ```typescript
-   // src/parser/rust/parser.ts
-   export class RustParser implements LanguageParser {
+   // src/parser/kotlin/parser.ts
+   export class KotlinParser implements LanguageParser {
      // Implement interface
    }
    ```
 
 2. **Add Test Framework Support** in `src/parser/[language]/[framework].ts`
    ```typescript
-   // src/parser/rust/cargo-test.ts
-   export class CargoTestParser {
-     // Parse #[test] functions
+   // src/parser/kotlin/kotest.ts
+   export class KotestParser {
+     // Parse Kotest functions
    }
    ```
 
@@ -378,8 +386,8 @@ npm run test:coverage
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/hambugsy/hambugsy/discussions)
-- Join our [Discord](https://discord.gg/hambugsy)
-- Email: contributors@hambugsy.dev
+- Open a [Discussion](https://github.com/APorkolab/hambugsy/discussions)
+- Open an [Issue](https://github.com/APorkolab/hambugsy/issues)
+- Website: [hambugsy.dev](https://hambugsy.dev)
 
 Thank you for contributing! 🍔🐛

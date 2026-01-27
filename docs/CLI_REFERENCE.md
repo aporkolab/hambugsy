@@ -1,5 +1,7 @@
 # Hambugsy CLI Reference
 
+> **Version:** 1.0.2 | **npm:** [npmjs.com/package/hambugsy](https://www.npmjs.com/package/hambugsy)
+
 ## Command Overview
 
 ```
@@ -7,12 +9,24 @@ hambugsy <command> [options] [arguments]
 
 Commands:
   analyze     Analyze source files for test/code issues
+  suggest     Find missing tests and generate suggestions
   fix         Auto-fix issues with confirmation
   report      Generate detailed report
   init        Initialize configuration file
   version     Show version information
   help        Show help for a command
 ```
+
+## Supported Languages
+
+| Language | Test Frameworks |
+|----------|-----------------|
+| Java | JUnit 4/5, TestNG |
+| TypeScript/JavaScript | Jest, Vitest, Mocha |
+| Python | pytest, unittest |
+| Go | go test, testify |
+| Rust | #[test], tokio::test |
+| C# | NUnit, xUnit, MSTest |
 
 ---
 
@@ -108,6 +122,15 @@ hambugsy analyze ./src --format=json > report.json
 
 # Combine with jq
 hambugsy analyze ./src --format=json | jq '.results[] | select(.verdict.type == "CODE_BUG")'
+
+# Analyze Go project
+hambugsy analyze ./pkg --recursive
+
+# Analyze Rust project
+hambugsy analyze ./src --recursive
+
+# Analyze C# project
+hambugsy analyze ./src --recursive
 ```
 
 ### Exit Codes

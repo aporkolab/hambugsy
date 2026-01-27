@@ -461,8 +461,8 @@ hambugsy analyze ./src -v 2>&1 | grep "Copilot prompt"
 ### Resources
 
 - **Documentation:** [hambugsy.dev/docs](https://hambugsy.dev/docs)
-- **GitHub Issues:** [github.com/hambugsy/hambugsy/issues](https://github.com/hambugsy/hambugsy/issues)
-- **Discussions:** [github.com/hambugsy/hambugsy/discussions](https://github.com/hambugsy/hambugsy/discussions)
+- **GitHub Issues:** [github.com/APorkolab/hambugsy/issues](https://github.com/APorkolab/hambugsy/issues)
+- **Discussions:** [github.com/APorkolab/hambugsy/discussions](https://github.com/APorkolab/hambugsy/discussions)
 - **Discord:** [discord.gg/hambugsy](https://discord.gg/hambugsy)
 
 ### Filing a Bug Report

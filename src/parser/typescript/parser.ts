@@ -255,8 +255,9 @@ export class TypeScriptParser {
     const assertions: Assertion[] = [];
 
     // Helper to match balanced parentheses content (handles one level of nesting)
+    // Using atomic-like pattern to prevent catastrophic backtracking
     // Matches: content with nested parens like "calculator.add(2, 3)" or simple "5"
-    const balancedParen = "(?:[^()]+|\\([^()]*\\))+";
+    const balancedParen = "[^()]*(?:\\([^()]*\\)[^()]*)*";
 
     // Jest/Vitest expect patterns
     const patterns: Array<{

@@ -23,6 +23,10 @@
     "junit",
     "jest",
     "pytest",
+    "go-test",
+    "cargo-test",
+    "nunit",
+    "xunit",
     "diagnostics",
     "copilot"
   ],
@@ -30,7 +34,10 @@
     "onLanguage:java",
     "onLanguage:typescript",
     "onLanguage:javascript",
-    "onLanguage:python"
+    "onLanguage:python",
+    "onLanguage:go",
+    "onLanguage:rust",
+    "onLanguage:csharp"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -60,19 +67,19 @@
       "editor/context": [
         {
           "command": "hambugsy.analyzeFile",
-          "when": "editorLangId == java || editorLangId == typescript || editorLangId == javascript || editorLangId == python",
+          "when": "editorLangId == java || editorLangId == typescript || editorLangId == javascript || editorLangId == python || editorLangId == go || editorLangId == rust || editorLangId == csharp",
           "group": "hambugsy"
         },
         {
           "command": "hambugsy.suggestTests",
-          "when": "editorLangId == java || editorLangId == typescript || editorLangId == javascript || editorLangId == python",
+          "when": "editorLangId == java || editorLangId == typescript || editorLangId == javascript || editorLangId == python || editorLangId == go || editorLangId == rust || editorLangId == csharp",
           "group": "hambugsy"
         }
       ],
       "explorer/context": [
         {
           "command": "hambugsy.analyzeFile",
-          "when": "resourceExtname == .java || resourceExtname == .ts || resourceExtname == .js || resourceExtname == .py",
+          "when": "resourceExtname == .java || resourceExtname == .ts || resourceExtname == .js || resourceExtname == .py || resourceExtname == .go || resourceExtname == .rs || resourceExtname == .cs",
           "group": "hambugsy"
         }
       ]

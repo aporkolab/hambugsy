@@ -46,6 +46,8 @@ let diagnosticCollection: vscode.DiagnosticCollection;
 let outputChannel: vscode.OutputChannel;
 let statusBarItem: vscode.StatusBarItem;
 let resultsProvider: HambugsyResultsProvider;
+let codeLensProvider: HambugsyCodeLensProvider;
+let codeActionProvider: HambugsyCodeActionProvider;
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel("Hambugsy");
@@ -59,12 +61,37 @@ export function activate(context: vscode.ExtensionContext) {
   resultsProvider = new HambugsyResultsProvider();
   vscode.window.registerTreeDataProvider("hambugsyResults", resultsProvider);
 
+  // CodeLens provider for test methods
+  codeLensProvider = new HambugsyCodeLensProvider();
+  const supportedLanguages = [
+    { scheme: "file", language: "java" },
+    { scheme: "file", language: "typescript" },
+    { scheme: "file", language: "javascript" },
+    { scheme: "file", language: "python" },
+    { scheme: "file", language: "go" },
+    { scheme: "file", language: "rust" },
+    { scheme: "file", language: "csharp" },
+  ];
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(supportedLanguages, codeLensProvider)
+  );
+
+  // Code Action provider for quick fixes
+  codeActionProvider = new HambugsyCodeActionProvider();
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(supportedLanguages, codeActionProvider, {
+      providedCodeActionKinds: HambugsyCodeActionProvider.providedCodeActionKinds,
+    })
+  );
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand("hambugsy.analyzeFile", analyzeCurrentFile),
     vscode.commands.registerCommand("hambugsy.analyzeWorkspace", analyzeWorkspace),
     vscode.commands.registerCommand("hambugsy.suggestTests", suggestTests),
     vscode.commands.registerCommand("hambugsy.fixIssues", fixIssues),
+    vscode.commands.registerCommand("hambugsy.showDetails", showResultDetails),
+    vscode.commands.registerCommand("hambugsy.goToSource", goToSource),
     diagnosticCollection,
     outputChannel,
     statusBarItem
@@ -100,7 +127,7 @@ async function analyzeCurrentFile() {
 
   if (!isSupportedLanguage(editor.document.languageId)) {
     vscode.window.showWarningMessage(
-      "Hambugsy only supports Java, TypeScript, JavaScript, and Python files"
+      "Hambugsy supports Java, TypeScript, JavaScript, Python, Go, Rust, and C# files"
     );
     return;
   }
@@ -338,7 +365,7 @@ class ResultItem extends vscode.TreeItem {
 // ============================================================================
 
 function isSupportedLanguage(languageId: string): boolean {
-  return ["java", "typescript", "javascript", "python"].includes(languageId);
+  return ["java", "typescript", "javascript", "python", "go", "rust", "csharp"].includes(languageId);
 }
 
 function getSeverity(verdictType: string): vscode.DiagnosticSeverity {
@@ -359,4 +386,243 @@ function handleError(error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown error";
   outputChannel.appendLine(`Error: ${message}`);
   vscode.window.showErrorMessage(`Hambugsy: ${message}`);
+}
+
+// ============================================================================
+// Additional Commands
+// ============================================================================
+
+async function showResultDetails(result: DiagnosticResult) {
+  const panel = vscode.window.createWebviewPanel(
+    "hambugsyDetails",
+    `Hambugsy: ${result.testName}`,
+    vscode.ViewColumn.Two,
+    {}
+  );
+
+  panel.webview.html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: var(--vscode-font-family); padding: 20px; }
+        h1 { color: var(--vscode-foreground); }
+        .verdict {
+          padding: 10px;
+          border-radius: 4px;
+          margin: 10px 0;
+          background: var(--vscode-editor-background);
+        }
+        .CODE_BUG { border-left: 4px solid #f44336; }
+        .OUTDATED_TEST { border-left: 4px solid #ff9800; }
+        .FLAKY_TEST { border-left: 4px solid #ffeb3b; }
+        .PASSED { border-left: 4px solid #4caf50; }
+        pre {
+          background: var(--vscode-textCodeBlock-background);
+          padding: 10px;
+          overflow-x: auto;
+        }
+        .suggestion {
+          background: var(--vscode-inputValidation-infoBackground);
+          padding: 10px;
+          margin: 5px 0;
+          border-radius: 4px;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>${result.testName}</h1>
+      <p><strong>File:</strong> ${result.testFile}</p>
+
+      <div class="verdict ${result.verdict.type}">
+        <h2>${result.verdict.type}</h2>
+        <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(0)}%</p>
+        <p><strong>Reason:</strong> ${result.verdict.reason}</p>
+        <p>${result.verdict.explanation}</p>
+      </div>
+
+      <h3>Recommendation</h3>
+      <p>${result.verdict.recommendation.description}</p>
+
+      ${result.verdict.recommendation.suggestedFix ? `
+        <h4>Suggested Fix:</h4>
+        <pre><code>${result.verdict.recommendation.suggestedFix}</code></pre>
+      ` : ""}
+
+      ${result.suggestions.length > 0 ? `
+        <h3>Additional Suggestions</h3>
+        ${result.suggestions.map(s => `<div class="suggestion">${s}</div>`).join("")}
+      ` : ""}
+    </body>
+    </html>
+  `;
+}
+
+async function goToSource(filePath: string, lineNumber: number) {
+  const doc = await vscode.workspace.openTextDocument(filePath);
+  const editor = await vscode.window.showTextDocument(doc);
+  const position = new vscode.Position(lineNumber - 1, 0);
+  editor.selection = new vscode.Selection(position, position);
+  editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+}
+
+// ============================================================================
+// CodeLens Provider - Shows inline verdicts on test methods
+// ============================================================================
+
+class HambugsyCodeLensProvider implements vscode.CodeLensProvider {
+  private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
+  readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
+
+  private results: Map<string, DiagnosticResult[]> = new Map();
+
+  setResults(filePath: string, results: DiagnosticResult[]) {
+    this.results.set(filePath, results);
+    this._onDidChangeCodeLenses.fire();
+  }
+
+  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+    const lenses: vscode.CodeLens[] = [];
+    const text = document.getText();
+
+    // Find test methods based on language
+    const testPatterns = this.getTestPatterns(document.languageId);
+
+    for (const pattern of testPatterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const position = document.positionAt(match.index);
+        const range = new vscode.Range(position, position);
+
+        // Add "Analyze Test" lens
+        lenses.push(new vscode.CodeLens(range, {
+          title: "$(bug) Analyze with Hambugsy",
+          command: "hambugsy.analyzeFile",
+          tooltip: "Analyze this test for bugs",
+        }));
+
+        // Check if we have a result for this test
+        const fileResults = this.results.get(document.uri.fsPath);
+        const testName = match[1] || match[2] || match[3];
+        const result = fileResults?.find(r => r.testName === testName);
+
+        if (result) {
+          const icon = this.getVerdictIcon(result.verdict.type);
+          lenses.push(new vscode.CodeLens(range, {
+            title: `${icon} ${result.verdict.type} (${(result.confidence * 100).toFixed(0)}%)`,
+            command: "hambugsy.showDetails",
+            arguments: [result],
+            tooltip: result.reasoning,
+          }));
+        }
+      }
+    }
+
+    return lenses;
+  }
+
+  private getTestPatterns(languageId: string): RegExp[] {
+    switch (languageId) {
+      case "java":
+        return [/@Test[\s\S]*?(?:public\s+)?void\s+(\w+)/g];
+      case "typescript":
+      case "javascript":
+        return [
+          /(?:it|test)\s*\(\s*['"]([^'"]+)['"]/g,
+          /(?:describe)\s*\(\s*['"]([^'"]+)['"]/g,
+        ];
+      case "python":
+        return [/def\s+(test_\w+)/g];
+      case "go":
+        return [/func\s+(Test\w+)/g, /func\s+(Benchmark\w+)/g];
+      case "rust":
+        return [/#\[test\][\s\S]*?fn\s+(\w+)/g, /#\[tokio::test\][\s\S]*?fn\s+(\w+)/g];
+      case "csharp":
+        return [
+          /\[Test\][\s\S]*?(?:public\s+)?(?:async\s+)?(?:void|Task)\s+(\w+)/g,
+          /\[Fact\][\s\S]*?(?:public\s+)?(?:async\s+)?(?:void|Task)\s+(\w+)/g,
+          /\[TestMethod\][\s\S]*?(?:public\s+)?(?:async\s+)?(?:void|Task)\s+(\w+)/g,
+        ];
+      default:
+        return [];
+    }
+  }
+
+  private getVerdictIcon(verdictType: string): string {
+    switch (verdictType) {
+      case "CODE_BUG": return "$(bug)";
+      case "OUTDATED_TEST": return "$(history)";
+      case "FLAKY_TEST": return "$(question)";
+      case "ENVIRONMENT_ISSUE": return "$(globe)";
+      case "PASSED": return "$(pass)";
+      default: return "$(circle-outline)";
+    }
+  }
+}
+
+// ============================================================================
+// Code Action Provider - Quick fixes for detected issues
+// ============================================================================
+
+class HambugsyCodeActionProvider implements vscode.CodeActionProvider {
+  static readonly providedCodeActionKinds = [
+    vscode.CodeActionKind.QuickFix,
+    vscode.CodeActionKind.Refactor,
+  ];
+
+  provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range,
+    context: vscode.CodeActionContext
+  ): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+
+    // Find Hambugsy diagnostics in range
+    const hambugsyDiagnostics = context.diagnostics.filter(
+      d => d.source === "Hambugsy"
+    );
+
+    for (const diagnostic of hambugsyDiagnostics) {
+      // Add quick fix action based on verdict type
+      if (diagnostic.code === "CODE_BUG") {
+        const fixAction = new vscode.CodeAction(
+          "View Hambugsy fix suggestion",
+          vscode.CodeActionKind.QuickFix
+        );
+        fixAction.command = {
+          command: "hambugsy.fixIssues",
+          title: "Apply Hambugsy fix",
+        };
+        fixAction.diagnostics = [diagnostic];
+        fixAction.isPreferred = true;
+        actions.push(fixAction);
+      }
+
+      if (diagnostic.code === "OUTDATED_TEST") {
+        const updateAction = new vscode.CodeAction(
+          "Update test to match current code",
+          vscode.CodeActionKind.QuickFix
+        );
+        updateAction.command = {
+          command: "hambugsy.suggestTests",
+          title: "Suggest updated test",
+        };
+        updateAction.diagnostics = [diagnostic];
+        actions.push(updateAction);
+      }
+
+      // Add "Show Details" action for all diagnostics
+      const detailsAction = new vscode.CodeAction(
+        "Show Hambugsy analysis details",
+        vscode.CodeActionKind.Empty
+      );
+      detailsAction.command = {
+        command: "hambugsy.analyzeFile",
+        title: "Show details",
+      };
+      actions.push(detailsAction);
+    }
+
+    return actions;
+  }
 }

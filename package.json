@@ -1,6 +1,6 @@
 {
   "name": "hambugsy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The CLI tool that tells you WHO is wrong: your test or your code. Uses GitHub Copilot CLI for AI-powered test failure diagnosis.",
   "type": "module",
   "main": "dist/index.js",
@@ -46,7 +46,11 @@
     "README.md",
     "LICENSE"
   ],
-  "author": "APorkolab",
+  "author": {
+    "name": "Dr. Porkoláb Ádám",
+    "email": "ap@aporkolab.com",
+    "url": "https://hambugsy.dev"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

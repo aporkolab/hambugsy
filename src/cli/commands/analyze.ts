@@ -12,6 +12,9 @@ import { MarkdownReporter } from "../output/markdown.js";
 import { JavaParser } from "../../parser/java/parser.js";
 import { TypeScriptParser } from "../../parser/typescript/parser.js";
 import { PythonParser } from "../../parser/python/parser.js";
+import { GoParser } from "../../parser/go/parser.js";
+import { RustParser } from "../../parser/rust/parser.js";
+import { CSharpParser } from "../../parser/csharp/parser.js";
 import { CopilotBridge, getCopilotBridge, CopilotError } from "../../services/copilot.js";
 import { GitService, getGitService } from "../../services/git.js";
 import { VerdictEngine, createVerdictEngine } from "../../verdict/engine.js";
@@ -161,7 +164,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     const files = await discoverFiles(path, options.recursive ?? true);
 
     if (files.length === 0) {
-      spinner.warn("No source files found (Java, TypeScript, JavaScript, Python)");
+      spinner.warn("No source files found (Java, TypeScript, JavaScript, Python, Go, Rust, C#)");
       console.log(chalk.gray(`Searched in: ${resolve(path)}`));
       return 0;
     }
@@ -249,7 +252,7 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
 
   // Set up file watcher
   const watcher = chokidar.watch(
-    ["**/*.java", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py"],
+    ["**/*.java", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.rs", "**/*.cs"],
     {
       cwd: resolvedPath,
       ignored: [
@@ -261,6 +264,9 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
         "**/.git/**",
         "**/__pycache__/**",
         "**/*.d.ts",
+        "**/vendor/**",
+        "**/bin/**",
+        "**/obj/**",
       ],
       ignoreInitial: true,
       persistent: true,
@@ -328,10 +334,10 @@ async function discoverFiles(
   recursive: boolean
 ): Promise<string[]> {
   const resolvedPath = resolve(basePath);
-  // Support Java, TypeScript/JavaScript, and Python
+  // Support Java, TypeScript/JavaScript, Python, Go, Rust, and C#
   const pattern = recursive
-    ? "**/*.{java,ts,tsx,js,jsx,py}"
-    : "*.{java,ts,tsx,js,jsx,py}";
+    ? "**/*.{java,ts,tsx,js,jsx,py,go,rs,cs}"
+    : "*.{java,ts,tsx,js,jsx,py,go,rs,cs}";
 
   const files = await glob(pattern, {
     cwd: resolvedPath,
@@ -378,6 +384,18 @@ async function parseFile(filePath: string): Promise<ParseResult> {
     case "py":
       const pyParser = new PythonParser(filePath);
       return pyParser.parseFile();
+
+    case "go":
+      const goParser = new GoParser(filePath);
+      return goParser.parseFile();
+
+    case "rs":
+      const rustParser = new RustParser(filePath);
+      return rustParser.parseFile();
+
+    case "cs":
+      const csharpParser = new CSharpParser(filePath);
+      return csharpParser.parseFile();
 
     default:
       return { tests: [], methods: [] };

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/logo-512.png" alt="Hambugsy Logo" width="150" />
+</p>
+
 # Hambugsy VS Code Extension
 
 **The VS Code extension that tells you WHO is wrong: your test or your code.**

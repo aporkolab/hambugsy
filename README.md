@@ -1,13 +1,21 @@
-# 🍔 Hambugsy
+<p align="center">
+  <img src="assets/logo-512.png" alt="Hambugsy Logo" width="200" />
+</p>
 
-**The CLI tool that tells you WHO is wrong: your test or your code.**
+<h1 align="center">Hambugsy</h1>
 
-[![npm version](https://img.shields.io/npm/v/hambugsy)](https://www.npmjs.com/package/hambugsy)
-[![npm downloads](https://img.shields.io/npm/dm/hambugsy)](https://www.npmjs.com/package/hambugsy)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Built with GitHub Copilot CLI](https://img.shields.io/badge/Built%20with-GitHub%20Copilot%20CLI-blue)](https://github.com/github/gh-copilot)
-[![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-144%20passing-brightgreen)](https://github.com/APorkolab/hambugsy)
+<p align="center">
+  <strong>The CLI tool that tells you WHO is wrong: your test or your code.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/hambugsy"><img src="https://img.shields.io/npm/v/hambugsy" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/hambugsy"><img src="https://img.shields.io/npm/dm/hambugsy" alt="npm downloads" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+  <a href="https://github.com/github/gh-copilot"><img src="https://img.shields.io/badge/Built%20with-GitHub%20Copilot%20CLI-blue" alt="Built with GitHub Copilot CLI" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-18%2B-green" alt="Node.js 18+" /></a>
+  <a href="https://github.com/APorkolab/hambugsy"><img src="https://img.shields.io/badge/tests-144%20passing-brightgreen" alt="Tests" /></a>
+</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/hambugsy"><strong>📦 View on npm</strong></a> •

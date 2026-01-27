@@ -14,6 +14,7 @@ import { PythonParser } from "../../parser/python/parser.js";
 import { CopilotBridge, getCopilotBridge, CopilotError } from "../../services/copilot.js";
 import { GitService, getGitService } from "../../services/git.js";
 import { VerdictEngine, createVerdictEngine } from "../../verdict/engine.js";
+import { TestRunner, getTestRunner, type TestRunResult } from "../../services/test-runner.js";
 import type {
   DiagnosticResult,
   AnalysisResult,
@@ -40,6 +41,8 @@ interface AnalyzeOptions {
   test?: string;
   interactive?: boolean;
   watch?: boolean;
+  runTests?: boolean;
+  requireCopilot?: boolean;
 }
 
 interface ProgressInfo {
@@ -75,6 +78,8 @@ export const analyzeCommand = new Command("analyze")
   .option("-t, --test <name>", "Filter by specific test name")
   .option("-i, --interactive", "Interactive mode - confirm each step")
   .option("-w, --watch", "Watch for file changes and re-run analysis")
+  .option("--run-tests", "Actually run tests to detect real failures")
+  .option("--require-copilot", "Require GitHub Copilot CLI (fail if not available)")
   .action(async (path: string, options: AnalyzeOptions) => {
     if (options.watch) {
       await runWatchMode(path, options);
@@ -93,6 +98,8 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
   let copilot: CopilotBridge;
   let git: GitService;
   let verdictEngine: VerdictEngine;
+  let testRunner: TestRunner | null = null;
+  let testResults: TestRunResult | null = null;
 
   try {
     // 1. Check GitHub Copilot CLI
@@ -101,6 +108,16 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     const copilotAvailable = await copilot.checkAvailability();
 
     if (!copilotAvailable) {
+      if (options.requireCopilot) {
+        spinner.fail("GitHub Copilot CLI not found");
+        console.error(
+          chalk.red("\n--require-copilot flag is set but Copilot CLI is not available.")
+        );
+        console.error(
+          chalk.yellow("Install it with: gh extension install github/gh-copilot")
+        );
+        return 1;
+      }
       spinner.warn("GitHub Copilot CLI not found - analysis will be limited");
       console.log(
         chalk.yellow(
@@ -109,7 +126,28 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
         )
       );
     } else {
-      spinner.succeed("GitHub Copilot CLI available");
+      spinner.succeed("GitHub Copilot CLI available - AI-powered analysis enabled");
+    }
+
+    // 1b. Run actual tests if requested
+    if (options.runTests) {
+      spinner.start("Running tests to detect real failures...");
+      testRunner = getTestRunner(resolve(path));
+
+      try {
+        testResults = await testRunner.runTests();
+        const statusColor = testResults.failed > 0 ? chalk.red : chalk.green;
+        spinner.succeed(
+          `Tests complete: ${statusColor(`${testResults.passed} passed, ${testResults.failed} failed`)}`
+        );
+
+        if (testResults.failed > 0) {
+          console.log(chalk.yellow(`\n  Found ${testResults.failed} failing test(s) to analyze\n`));
+        }
+      } catch (error) {
+        spinner.warn(`Could not run tests: ${error instanceof Error ? error.message : error}`);
+        console.log(chalk.gray("  Falling back to static analysis\n"));
+      }
     }
 
     // 2. Initialize services
@@ -145,7 +183,8 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
       verdictEngine,
       spinner,
       options.verbose ?? false,
-      options.test
+      options.test,
+      testResults
     );
 
     // 5. Filter results
@@ -350,7 +389,8 @@ async function analyzeFiles(
   verdictEngine: VerdictEngine,
   spinner: Ora,
   verbose: boolean,
-  testNameFilter?: string
+  testNameFilter?: string,
+  testResults?: TestRunResult | null
 ): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = [];
   const testFiles: Map<string, ParseResult> = new Map();
@@ -422,8 +462,14 @@ async function analyzeFiles(
     spinner.text = `Analyzing [${progress.current}/${progress.total}] ${progress.file}`;
 
     try {
+      // Check if this test actually failed (from real test run)
+      const realFailure = testResults?.results.find(
+        (r) => r.status === "failed" &&
+               (r.name.includes(pair.test.name) || pair.test.name.includes(r.name.split(".").pop() ?? ""))
+      );
+
       // Build analysis result
-      const analysis = await buildAnalysisResult(pair, copilot, git);
+      const analysis = await buildAnalysisResult(pair, copilot, git, realFailure?.errorMessage);
 
       // Determine verdict
       const verdict = await verdictEngine.determine(analysis);
@@ -549,7 +595,8 @@ function extractMethodNameFromTest(testName: string): string {
 async function buildAnalysisResult(
   pair: TestSourcePair,
   copilot: CopilotBridge,
-  git: GitService
+  git: GitService,
+  realErrorMessage?: string
 ): Promise<AnalysisResult> {
   // Get git context
   const gitContext = await buildGitContext(pair, git);
@@ -585,8 +632,8 @@ async function buildAnalysisResult(
     codeBehavior = buildBehaviorFromMethod(pair.source);
   }
 
-  // Detect divergence
-  const divergence = detectDivergence(pair, testExpectation, codeBehavior);
+  // Detect divergence (use real error message if available)
+  const divergence = detectDivergence(pair, testExpectation, codeBehavior, realErrorMessage);
 
   return {
     pair,
@@ -660,12 +707,52 @@ function buildBehaviorFromMethod(method: SourceMethod): Behavior {
 function detectDivergence(
   pair: TestSourcePair,
   expectation: Expectation,
-  behavior: Behavior
+  behavior: Behavior,
+  realErrorMessage?: string
 ): AnalysisResult["divergence"] {
-  // Simple divergence detection based on assertions
-  // In a real implementation, this would be more sophisticated
+  // If we have a real error from test execution, use it!
+  if (realErrorMessage) {
+    // Parse the error to determine divergence type
+    const errorLower = realErrorMessage.toLowerCase();
 
-  // Check for exception mismatches
+    if (errorLower.includes("expected") && errorLower.includes("but")) {
+      // Extract expected vs actual from error message
+      const expectedMatch = realErrorMessage.match(/expected[:\s]+([^\n,]+)/i);
+      const actualMatch = realErrorMessage.match(/(?:but was|actual|got)[:\s]+([^\n,]+)/i);
+
+      return {
+        type: "RETURN_VALUE_MISMATCH",
+        description: `Test assertion failed: ${realErrorMessage.split("\n")[0]}`,
+        testLine: pair.test.lineNumber,
+        codeLine: pair.source.lineNumber,
+        expected: expectedMatch?.[1]?.trim() ?? "expected value",
+        actual: actualMatch?.[1]?.trim() ?? "actual value",
+      };
+    }
+
+    if (errorLower.includes("exception") || errorLower.includes("error") || errorLower.includes("throw")) {
+      return {
+        type: "EXCEPTION_MISMATCH",
+        description: `Exception mismatch: ${realErrorMessage.split("\n")[0]}`,
+        testLine: pair.test.lineNumber,
+        codeLine: pair.source.lineNumber,
+        expected: expectation.expectedExceptions.join(", ") || "no exception",
+        actual: realErrorMessage.split("\n")[0],
+      };
+    }
+
+    // Generic failure
+    return {
+      type: "RETURN_VALUE_MISMATCH",
+      description: realErrorMessage.split("\n")[0],
+      testLine: pair.test.lineNumber,
+      codeLine: pair.source.lineNumber,
+      expected: "test to pass",
+      actual: "test failed",
+    };
+  }
+
+  // Fallback: Static analysis for exception mismatches
   if (
     expectation.expectedExceptions.length > 0 &&
     behavior.thrownExceptions.length === 0
@@ -680,8 +767,7 @@ function detectDivergence(
     };
   }
 
-  // For now, return null (no divergence detected without actually running tests)
-  // Real implementation would need test execution results
+  // No divergence detected without actually running tests
   return null;
 }
 

@@ -10,7 +10,17 @@ export type TestFramework =
   | "vitest"
   | "mocha"
   | "pytest"
-  | "unittest";
+  | "unittest"
+  // Go
+  | "go-test"
+  | "go-benchmark"
+  // Rust
+  | "rust-test"
+  | "tokio-test"
+  // C#
+  | "nunit"
+  | "xunit"
+  | "mstest";
 
 export type AssertionType =
   | "equals"

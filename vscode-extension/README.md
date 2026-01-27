@@ -2,14 +2,19 @@
 
 **The VS Code extension that tells you WHO is wrong: your test or your code.**
 
+[![npm version](https://img.shields.io/npm/v/hambugsy)](https://www.npmjs.com/package/hambugsy)
+
 ## Features
 
-- **Analyze Current File** - Right-click on any Java, TypeScript, JavaScript, or Python file to analyze test failures
+- **CodeLens Integration** - See verdicts directly on test methods in your editor
+- **Quick Fix Actions** - One-click fixes for detected issues
+- **Analyze Current File** - Right-click on any supported file to analyze test failures
 - **Analyze Workspace** - Analyze all supported files in your workspace
 - **Suggest Missing Tests** - Get suggestions for untested code paths
 - **Auto-Fix Issues** - Automatically fix detected issues with one click
 - **Inline Diagnostics** - See issues directly in your editor
 - **Results Tree View** - Browse all analysis results in the Explorer sidebar
+- **Detailed Webview Panel** - Rich HTML view for detailed analysis results
 
 ## Commands
 
@@ -30,9 +35,14 @@
 
 ## Supported Languages
 
-- Java (JUnit 4/5)
-- TypeScript/JavaScript (Jest, Vitest, Mocha)
-- Python (pytest, unittest)
+| Language | Test Framework |
+|----------|----------------|
+| Java | JUnit 4/5, TestNG |
+| TypeScript/JavaScript | Jest, Vitest, Mocha |
+| Python | pytest, unittest |
+| Go | go test, testify |
+| Rust | #[test], tokio::test |
+| C# | NUnit, xUnit, MSTest |
 
 ## Prerequisites
 
@@ -48,31 +58,48 @@
 
 ## Installation
 
-### From VS Code Marketplace
-
-Search for "Hambugsy" in the VS Code Extensions view and click Install.
-
 ### Manual Installation
 
-1. Download the `.vsix` file from the [releases page](https://github.com/APorkolab/hambugsy/releases)
+1. Build the extension:
+   ```bash
+   cd vscode-extension
+   npm install
+   npm run compile
+   npm run package
+   ```
+
 2. In VS Code, go to Extensions > ... > Install from VSIX
-3. Select the downloaded file
+
+3. Select the generated `.vsix` file
 
 ## Usage
 
 ### Analyzing a File
 
-1. Open a Java, TypeScript, JavaScript, or Python file
+1. Open any supported file (Java, TypeScript, JavaScript, Python, Go, Rust, C#)
 2. Right-click in the editor
 3. Select "Hambugsy: Analyze Current File"
 
 Or use the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for "Hambugsy".
+
+### CodeLens
+
+When you open a test file, you'll see CodeLens annotations above each test method:
+- `$(bug) Analyze with Hambugsy` - Click to analyze the test
+- `$(bug) CODE_BUG (85%)` - Shows the verdict if already analyzed
 
 ### Viewing Results
 
 - **Problems Panel** - Issues appear as errors/warnings in the Problems panel
 - **Results Tree** - Browse results in the "Hambugsy Results" view in the Explorer sidebar
 - **Output Channel** - Detailed analysis output in the "Hambugsy" output channel
+- **Webview Panel** - Click on a result to see detailed analysis in a rich HTML view
+
+## Links
+
+- **npm:** https://www.npmjs.com/package/hambugsy
+- **GitHub:** https://github.com/APorkolab/hambugsy
+- **Website:** https://hambugsy.dev
 
 ## License
 

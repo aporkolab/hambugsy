@@ -2,10 +2,27 @@
 
 **The CLI tool that tells you WHO is wrong: your test or your code.**
 
+[![npm version](https://img.shields.io/npm/v/hambugsy)](https://www.npmjs.com/package/hambugsy)
+[![npm downloads](https://img.shields.io/npm/dm/hambugsy)](https://www.npmjs.com/package/hambugsy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Built with GitHub Copilot CLI](https://img.shields.io/badge/Built%20with-GitHub%20Copilot%20CLI-blue)](https://github.com/github/gh-copilot)
 [![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
-[![npm version](https://img.shields.io/npm/v/hambugsy)](https://www.npmjs.com/package/hambugsy)
+[![Tests](https://img.shields.io/badge/tests-144%20passing-brightgreen)](https://github.com/APorkolab/hambugsy)
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/hambugsy"><strong>📦 View on npm</strong></a> •
+  <a href="https://hambugsy.dev"><strong>🌐 Website</strong></a> •
+  <a href="#installation"><strong>⚡ Quick Start</strong></a>
+</p>
+
+---
+
+## Quick Install
+
+```bash
+npm install -g hambugsy
+hambugsy analyze ./src
+```
 
 ---
 
@@ -474,6 +491,18 @@ Commit: def5678 - "fix: typo in user lookup"
 💡 RECOMMENDATION:
 Fix the code in UserService.java - add null check and throw UserNotFoundException.
 ```
+
+### Try It Yourself
+
+Check out the included example project with intentional bugs:
+
+```bash
+git clone https://github.com/APorkolab/hambugsy.git
+cd hambugsy/examples/buggy-discount-service
+hambugsy analyze .
+```
+
+This will detect the discount rate mismatch (test expects 10%, code applies 15%).
 
 ---
 

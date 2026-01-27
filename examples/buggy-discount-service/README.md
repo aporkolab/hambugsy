@@ -1,6 +1,12 @@
 # Buggy Discount Service Example
 
-This example project demonstrates how **Hambugsy** detects mismatches between tests and code.
+This example project demonstrates how [**Hambugsy**](https://www.npmjs.com/package/hambugsy) detects mismatches between tests and code.
+
+## Install Hambugsy
+
+```bash
+npm install -g hambugsy
+```
 
 ## The Bug
 

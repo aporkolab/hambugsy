@@ -46,6 +46,7 @@ export class GitService {
       await execa("git", ["rev-parse", "--git-dir"], { cwd: this.cwd });
       return true;
     } catch {
+      // Not a git repository - this is a valid state, not an error
       return false;
     }
   }

@@ -80,6 +80,7 @@ export class CopilotBridge {
       await execa("gh", ["copilot", "--version"], { timeout: 5000 });
       this.isAvailable = true;
     } catch {
+      // Expected when gh copilot is not installed - not an error condition
       this.isAvailable = false;
     }
 

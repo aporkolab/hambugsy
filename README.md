@@ -36,7 +36,7 @@ hambugsy analyze ./src
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/9xGDgQTIJ4xWC9PT.svg)](https://asciinema.org/a/9xGDgQTIJ4xWC9PT)
+[![asciicast](https://asciinema.org/a/hZgtfHSLYVLY2kvL.svg)](https://asciinema.org/a/hZgtfHSLYVLY2kvL)
 
 ---
 

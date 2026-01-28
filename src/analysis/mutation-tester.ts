@@ -14,6 +14,15 @@ import { readFileSync } from "fs";
 import type { TestSourcePair } from "../core/types.js";
 
 // ============================================================================
+// Configuration Constants
+// ============================================================================
+
+/** Percentage increase for numeric mutation testing (10% = 1.1) */
+const MUTATION_INCREASE_FACTOR = 1.1;
+/** Percentage decrease for numeric mutation testing (10% = 0.9) */
+const MUTATION_DECREASE_FACTOR = 0.9;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -120,21 +129,24 @@ function generateMutations(sourceContent: string, methodName: string): Mutation[
       const num = parseFloat(original);
 
       if (!isNaN(num) && num !== 0 && num !== 1) {
-        // Mutate by small amount
+        // Mutate by small percentage to detect weak assertions
+        const increased = num * MUTATION_INCREASE_FACTOR;
+        const decreased = num * MUTATION_DECREASE_FACTOR;
+
         mutations.push({
           type: "NUMERIC_CHANGE",
           location: { line: lineNum, column: match.index! + 1 },
           original,
-          mutated: String(num * 1.1), // 10% increase
-          description: `Change ${original} to ${(num * 1.1).toFixed(2)}`,
+          mutated: String(increased),
+          description: `Change ${original} to ${increased.toFixed(2)}`,
         });
 
         mutations.push({
           type: "NUMERIC_CHANGE",
           location: { line: lineNum, column: match.index! + 1 },
           original,
-          mutated: String(num * 0.9), // 10% decrease
-          description: `Change ${original} to ${(num * 0.9).toFixed(2)}`,
+          mutated: String(decreased),
+          description: `Change ${original} to ${decreased.toFixed(2)}`,
         });
       }
     }

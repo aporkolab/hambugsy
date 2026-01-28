@@ -11,6 +11,13 @@
 import { readFileSync } from "fs";
 
 // ============================================================================
+// Configuration Constants
+// ============================================================================
+
+/** Maximum expression length for safe evaluation (prevents DoS) */
+const MAX_SAFE_EXPRESSION_LENGTH = 100;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -329,17 +336,26 @@ function extractTSValue(node: any, sourceFile: any, ts: any): ASTValue {
     };
   }
 
-  // For complex expressions, try to evaluate if possible
+  // For complex expressions, try to evaluate simple math expressions
+  // SECURITY: Only evaluate expressions containing digits, whitespace, and basic math operators
+  // The strict regex validation ensures no code injection is possible
   if (ts.isBinaryExpression(node) || ts.isParenthesizedExpression(node)) {
     try {
-      if (/^[\d\s\+\-\*\/\.\(\)]+$/.test(raw)) {
-        const result = Function(`"use strict"; return (${raw})`)();
-        if (typeof result === "number" && !isNaN(result)) {
-          return { type: "number", value: result, raw };
+      // Strict validation: only allow digits, whitespace, and basic math operators (+, -, *, /, ., parentheses)
+      const SAFE_MATH_PATTERN = /^[\d\s\+\-\*\/\.\(\)]+$/;
+      if (SAFE_MATH_PATTERN.test(raw) && raw.length < MAX_SAFE_EXPRESSION_LENGTH) {
+        // Additional validation: ensure balanced parentheses
+        const openParens = (raw.match(/\(/g) || []).length;
+        const closeParens = (raw.match(/\)/g) || []).length;
+        if (openParens === closeParens) {
+          const result = Function(`"use strict"; return (${raw})`)();
+          if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
+            return { type: "number", value: result, raw };
+          }
         }
       }
     } catch {
-      // Can't evaluate
+      // Expression evaluation failed - return as unevaluated expression
     }
   }
 

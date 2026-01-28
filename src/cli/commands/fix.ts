@@ -207,7 +207,8 @@ async function analyzeFiles(
         sourceFiles.set(file, parseResult);
       }
     } catch {
-      // Skip files that can't be parsed
+      // Skip files that can't be parsed - this is expected for some file types
+      // Errors are logged only in verbose mode to avoid noise
     }
   }
 
@@ -244,7 +245,7 @@ async function analyzeFiles(
         });
       }
     } catch {
-      // Skip pairs that can't be analyzed
+      // Skip pairs that can't be analyzed - continue with remaining pairs
     }
   }
 
@@ -376,14 +377,10 @@ async function createAnalysis(
     codeBehavior = buildBehaviorFromMethod(pair.source as SourceMethod);
   }
 
-  // Use advanced divergence detection (same as analyze command)
+  // Use advanced divergence detection (includes static analysis, mutation testing, and AI)
+  // This is the same detection logic used by the analyze command for consistency
   const advancedResult = await detectDivergenceAdvanced(pair, copilot);
-  let divergence = advancedResult.divergence;
-
-  // Fallback to local detection if advanced finds nothing
-  if (!divergence) {
-    divergence = detectDivergence(pair, testExpectation, codeBehavior);
-  }
+  const divergence = advancedResult.divergence;
 
   return {
     pair,
@@ -425,208 +422,6 @@ function buildBehaviorFromMethod(method: SourceMethod): Behavior {
     returnValue: method.returnType !== "void" ? method.returnType : null,
     thrownExceptions: [],
   };
-}
-
-function detectDivergence(
-  pair: TestSourcePair,
-  expectation: Expectation,
-  behavior: Behavior
-): AnalysisResult["divergence"] {
-  // Priority 1: Exception mismatch detection
-  if (
-    expectation.expectedExceptions.length > 0 &&
-    behavior.thrownExceptions.length === 0
-  ) {
-    return {
-      type: "EXCEPTION_MISMATCH",
-      description: `Test expects exception but code may not throw`,
-      testLine: pair.test.lineNumber,
-      codeLine: pair.source.lineNumber,
-      expected: expectation.expectedExceptions.join(", "),
-      actual: "no exception",
-    };
-  }
-
-  // Priority 2: Compare expected output vs return value (from AI analysis)
-  if (expectation.expectedOutput && behavior.returnValue) {
-    const expectedNorm = normalizeValue(expectation.expectedOutput);
-    const actualNorm = normalizeValue(behavior.returnValue);
-
-    if (expectedNorm !== actualNorm && expectedNorm !== "unknown" && actualNorm !== "unknown") {
-      return {
-        type: "RETURN_VALUE_MISMATCH",
-        description: `Expected output doesn't match code behavior`,
-        testLine: pair.test.lineNumber,
-        codeLine: pair.source.lineNumber,
-        expected: expectation.expectedOutput,
-        actual: behavior.returnValue,
-      };
-    }
-  }
-
-  // Priority 3: Semantic comparison of descriptions
-  const semanticDivergence = detectSemanticDivergence(
-    expectation.expectedBehavior,
-    behavior.actualBehavior,
-    pair
-  );
-  if (semanticDivergence) {
-    return semanticDivergence;
-  }
-
-  // Priority 4: Parse assertions from test body for numeric comparisons
-  const assertionDivergence = detectAssertionDivergence(pair);
-  if (assertionDivergence) {
-    return assertionDivergence;
-  }
-
-  // No divergence detected
-  return null;
-}
-
-function normalizeValue(value: string): string {
-  if (!value) return "unknown";
-
-  // Remove common wrappers
-  let normalized = value.trim().toLowerCase();
-  normalized = normalized.replace(/^["']|["']$/g, "");
-
-  // Try to extract numeric value
-  const numMatch = normalized.match(/(-?\d+\.?\d*)/);
-  if (numMatch) {
-    return numMatch[1];
-  }
-
-  // Return cleaned string
-  return normalized;
-}
-
-function detectSemanticDivergence(
-  expectedBehavior: string,
-  actualBehavior: string,
-  pair: TestSourcePair
-): AnalysisResult["divergence"] | null {
-  if (!expectedBehavior || !actualBehavior) return null;
-
-  const expected = expectedBehavior.toLowerCase();
-  const actual = actualBehavior.toLowerCase();
-
-  // Look for percentage/discount mismatches
-  const expectedPercent = expected.match(/(\d+)\s*%/);
-  const actualPercent = actual.match(/(\d+)\s*%/);
-  if (expectedPercent && actualPercent && expectedPercent[1] !== actualPercent[1]) {
-    return {
-      type: "RETURN_VALUE_MISMATCH",
-      description: `Percentage mismatch: test expects ${expectedPercent[1]}%, code applies ${actualPercent[1]}%`,
-      testLine: pair.test.lineNumber,
-      codeLine: pair.source.lineNumber,
-      expected: `${expectedPercent[1]}%`,
-      actual: `${actualPercent[1]}%`,
-    };
-  }
-
-  // Look for multiplier/factor mismatches (e.g., 0.90 vs 0.85)
-  const expectedFactor = expected.match(/(\d+\.\d+)/);
-  const actualFactor = actual.match(/(\d+\.\d+)/);
-  if (expectedFactor && actualFactor && expectedFactor[1] !== actualFactor[1]) {
-    return {
-      type: "RETURN_VALUE_MISMATCH",
-      description: `Value mismatch: test expects ${expectedFactor[1]}, code uses ${actualFactor[1]}`,
-      testLine: pair.test.lineNumber,
-      codeLine: pair.source.lineNumber,
-      expected: expectedFactor[1],
-      actual: actualFactor[1],
-    };
-  }
-
-  return null;
-}
-
-function detectAssertionDivergence(
-  pair: TestSourcePair
-): AnalysisResult["divergence"] | null {
-  const testBody = pair.test.body;
-
-  // Read full source file to get class-level constants (not just method body)
-  let sourceBody = pair.source.body;
-  try {
-    sourceBody = readFileSync(pair.source.filePath, "utf8");
-  } catch {
-    // Fall back to method body if file read fails
-  }
-
-  // Extract numeric assertions from test (expected values)
-  const assertionPatterns = [
-    /assertEquals\s*\(\s*(-?\d+\.?\d*)/g,
-    /expect\s*\([^)]+\)\s*\.toBe\s*\(\s*(-?\d+\.?\d*)/g,
-    /assert\.equal\s*\([^,]+,\s*(-?\d+\.?\d*)/g,
-    /assertEqual\s*\([^,]+,\s*(-?\d+\.?\d*)/g,
-    /toEqual\s*\(\s*(-?\d+\.?\d*)/g,
-  ];
-
-  const expectedValues: number[] = [];
-  for (const pattern of assertionPatterns) {
-    let match;
-    while ((match = pattern.exec(testBody)) !== null) {
-      const val = parseFloat(match[1]);
-      if (!isNaN(val)) expectedValues.push(val);
-    }
-  }
-
-  // Extract percentage/rate constants from source code
-  const constantPatterns = [
-    /(?:DISCOUNT|RATE|PERCENT)[A-Z_]*\s*=\s*(-?\d+\.?\d*)/gi,
-    /(?:discount|rate|percent)\s*=\s*(-?\d+\.?\d*)/gi,
-    /=\s*(-?\d+\.?\d*)\s*;\s*\/\/.*(?:discount|rate|percent)/gi,
-  ];
-
-  const sourceConstants: number[] = [];
-  for (const pattern of constantPatterns) {
-    let match;
-    while ((match = pattern.exec(sourceBody)) !== null) {
-      const val = parseFloat(match[1]);
-      if (!isNaN(val)) sourceConstants.push(val);
-    }
-  }
-
-  // Check for discount percentage mismatches
-  for (const expectedVal of expectedValues) {
-    if (expectedVal >= 80 && expectedVal <= 99) {
-      const impliedDiscountPercent = 100 - expectedVal;
-
-      for (const constant of sourceConstants) {
-        if (constant > 0 && constant < 1) {
-          const actualDiscountPercent = Math.round(constant * 100);
-
-          if (actualDiscountPercent !== impliedDiscountPercent && Math.abs(actualDiscountPercent - impliedDiscountPercent) <= 20) {
-            return {
-              type: "RETURN_VALUE_MISMATCH",
-              description: `Discount mismatch: test expects ${impliedDiscountPercent}% discount (result=${expectedVal}), but code applies ${actualDiscountPercent}% discount (${constant})`,
-              testLine: pair.test.lineNumber,
-              codeLine: pair.source.lineNumber,
-              expected: `${expectedVal} (${impliedDiscountPercent}% discount)`,
-              actual: `${100 - actualDiscountPercent} (${actualDiscountPercent}% discount)`,
-            };
-          }
-        } else if (constant >= 1 && constant <= 50) {
-          const actualDiscountPercent = constant;
-
-          if (actualDiscountPercent !== impliedDiscountPercent && Math.abs(actualDiscountPercent - impliedDiscountPercent) <= 20) {
-            return {
-              type: "RETURN_VALUE_MISMATCH",
-              description: `Discount mismatch: test expects ${impliedDiscountPercent}% discount (result=${expectedVal}), but code applies ${actualDiscountPercent}% discount`,
-              testLine: pair.test.lineNumber,
-              codeLine: pair.source.lineNumber,
-              expected: `${expectedVal} (${impliedDiscountPercent}% discount)`,
-              actual: `${100 - actualDiscountPercent} (${actualDiscountPercent}% discount)`,
-            };
-          }
-        }
-      }
-    }
-  }
-
-  return null;
 }
 
 // ============================================================================

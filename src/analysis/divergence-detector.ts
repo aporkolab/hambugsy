@@ -24,6 +24,42 @@ import {
 import { detectValueMismatchFromMutations } from "./mutation-tester.js";
 
 // ============================================================================
+// Configuration Constants
+// ============================================================================
+
+/** Confidence level when no divergence is detected */
+const CONFIDENCE_NO_DIVERGENCE = 0.99;
+/** Confidence for real test error parsing */
+const CONFIDENCE_REAL_ERROR = 0.98;
+/** Confidence for exception-type errors */
+const CONFIDENCE_EXCEPTION = 0.95;
+/** Confidence for generic failures */
+const CONFIDENCE_GENERIC_FAILURE = 0.90;
+/** Confidence for AI-powered analysis */
+const CONFIDENCE_AI_ANALYSIS = 0.85;
+/** Confidence when AI finds no divergence */
+const CONFIDENCE_AI_NO_DIVERGENCE = 0.80;
+/** Confidence for AST-based analysis */
+const CONFIDENCE_AST_ANALYSIS = 0.88;
+/** Confidence for static analysis value mismatch */
+const CONFIDENCE_STATIC_MISMATCH = 0.75;
+/** Confidence for percentage/rate calculation mismatch */
+const CONFIDENCE_RATE_MISMATCH = 0.80;
+/** Confidence for exception mismatch */
+const CONFIDENCE_STATIC_EXCEPTION = 0.70;
+/** Confidence when static analysis finds nothing */
+const CONFIDENCE_STATIC_NO_DIVERGENCE = 0.60;
+
+/** Minimum ratio for similar values (70%) */
+const RATIO_MIN_SIMILAR = 0.7;
+/** Maximum ratio for similar values (130%) */
+const RATIO_MAX_SIMILAR = 1.3;
+/** Tolerance for floating-point comparison */
+const FLOAT_TOLERANCE = 0.001;
+/** Maximum expression length for safe evaluation */
+const MAX_EXPRESSION_LENGTH = 100;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -67,12 +103,12 @@ export async function detectDivergenceAdvanced(
   // Extract all assertions from test
   const assertions = extractAllAssertions(pair.test.body, pair.test.filePath);
 
-  // Read full source file for better analysis
+  // Read full source file for better analysis (includes class-level constants)
   let sourceContent = pair.source.body;
   try {
     sourceContent = readFileSync(pair.source.filePath, "utf8");
   } catch {
-    // Fall back to method body
+    // Fall back to method body if file read fails (e.g., permission issues, file moved)
   }
 
   // Extract values and expressions from source
@@ -119,7 +155,7 @@ export async function detectDivergenceAdvanced(
   return {
     hasDivergence: false,
     divergence: null,
-    confidence: 0.99,
+    confidence: CONFIDENCE_NO_DIVERGENCE,
     details: "No divergence detected between test expectations and code behavior",
   };
 }
@@ -155,7 +191,7 @@ function parseRealTestError(
           expected: match[1].trim(),
           actual: match[2].trim(),
         },
-        confidence: 0.98,
+        confidence: CONFIDENCE_REAL_ERROR,
         details: errorMessage,
       };
     }
@@ -173,7 +209,7 @@ function parseRealTestError(
         expected: "no exception or different exception",
         actual: errorMessage.split("\n")[0],
       },
-      confidence: 0.95,
+      confidence: CONFIDENCE_EXCEPTION,
       details: errorMessage,
     };
   }
@@ -189,7 +225,7 @@ function parseRealTestError(
       expected: "test to pass",
       actual: "test failed",
     },
-    confidence: 0.90,
+    confidence: CONFIDENCE_GENERIC_FAILURE,
     details: errorMessage,
   };
 }
@@ -356,13 +392,22 @@ function evaluateExpression(expr: string): string {
   const cleaned = expr.replace(/[dDfFlL]$/, ""); // Remove type suffixes
 
   try {
-    // Only evaluate if it's a simple numeric expression
-    if (/^[\d\s\+\-\*\/\.\(\)]+$/.test(cleaned)) {
-      const result = Function(`"use strict"; return (${cleaned})`)();
-      return String(result);
+    // SECURITY: Only evaluate if it's a simple numeric expression
+    // Strict validation: only digits, whitespace, and basic math operators
+    const SAFE_MATH_PATTERN = /^[\d\s\+\-\*\/\.\(\)]+$/;
+    if (SAFE_MATH_PATTERN.test(cleaned) && cleaned.length < MAX_EXPRESSION_LENGTH) {
+      // Additional validation: ensure balanced parentheses
+      const openParens = (cleaned.match(/\(/g) || []).length;
+      const closeParens = (cleaned.match(/\)/g) || []).length;
+      if (openParens === closeParens) {
+        const result = Function(`"use strict"; return (${cleaned})`)();
+        if (typeof result === "number" && isFinite(result)) {
+          return String(result);
+        }
+      }
     }
   } catch {
-    // Can't evaluate, return as-is
+    // Expression evaluation failed, return original
   }
 
   return cleaned;
@@ -436,7 +481,7 @@ async function detectWithCopilot(
         expected: expectedMatch?.[1] || assertions[0]?.expectedValue || "expected value",
         actual: actualMatch?.[1] || sourceValues[0]?.value || "actual value",
       },
-      confidence: 0.85,
+      confidence: CONFIDENCE_AI_ANALYSIS,
       details: `AI Analysis:\n${explanation}\n\nTest assertions:\n${assertionSummary}\n\nSource values:\n${valueSummary}`,
     };
   }
@@ -444,7 +489,7 @@ async function detectWithCopilot(
   return {
     hasDivergence: false,
     divergence: null,
-    confidence: 0.80,
+    confidence: CONFIDENCE_AI_NO_DIVERGENCE,
     details: `AI Analysis found no clear divergence:\n${explanation}`,
   };
 }
@@ -497,7 +542,7 @@ function detectWithAST(pair: TestSourcePair): DivergenceResult | null {
             expected: comparison.expectedValue?.raw || "expected value",
             actual: comparison.actualValue?.raw || "actual value",
           },
-          confidence: 0.88,
+          confidence: CONFIDENCE_AST_ANALYSIS,
           details: `AST Analysis: ${comparison.details}`,
         };
       }
@@ -545,13 +590,13 @@ function detectWithStaticAnalysis(
     // Look for return values or calculations that should match but don't
     for (const actual of sourceNumbers) {
       // Skip if values are equal
-      if (Math.abs(expected.value - actual.value) < 0.001) continue;
+      if (Math.abs(expected.value - actual.value) < FLOAT_TOLERANCE) continue;
 
       // Check if this is a related value (same order of magnitude, similar context)
       const ratio = expected.value / actual.value;
 
       // Case 1: Values are close but different (possible regression)
-      if (ratio > 0.7 && ratio < 1.3 && Math.abs(expected.value - actual.value) >= 1) {
+      if (ratio > RATIO_MIN_SIMILAR && ratio < RATIO_MAX_SIMILAR && Math.abs(expected.value - actual.value) >= 1) {
         return {
           hasDivergence: true,
           divergence: {
@@ -562,7 +607,7 @@ function detectWithStaticAnalysis(
             expected: String(expected.value),
             actual: String(actual.value),
           },
-          confidence: 0.75,
+          confidence: CONFIDENCE_STATIC_MISMATCH,
           details: `Test assertion: ${expected.assertion.raw}\nSource: ${actual.source.expression}`,
         };
       }
@@ -584,7 +629,7 @@ function detectWithStaticAnalysis(
               expected: `${expected.value} (${impliedDiscount}% rate)`,
               actual: `${100 - actualDiscount} (${actualDiscount}% rate from ${actual.value})`,
             },
-            confidence: 0.80,
+            confidence: CONFIDENCE_RATE_MISMATCH,
             details: `Test assertion: ${expected.assertion.raw}\nSource constant/calculation: ${actual.source.expression}`,
           };
         }
@@ -611,7 +656,7 @@ function detectWithStaticAnalysis(
           expected: throwAssertions[0].expectedValue || "exception",
           actual: "no exception found in code",
         },
-        confidence: 0.70,
+        confidence: CONFIDENCE_STATIC_EXCEPTION,
         details: `Test expects: ${throwAssertions[0].raw}`,
       };
     }
@@ -620,7 +665,7 @@ function detectWithStaticAnalysis(
   return {
     hasDivergence: false,
     divergence: null,
-    confidence: 0.60,
+    confidence: CONFIDENCE_STATIC_NO_DIVERGENCE,
     details: "Static analysis found no clear divergence",
   };
 }

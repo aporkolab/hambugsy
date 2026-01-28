@@ -311,14 +311,22 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
   });
 
   // Handle graceful shutdown
-  process.on("SIGINT", () => {
+  let isShuttingDown = false;
+  const shutdown = () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     console.log(chalk.gray("\n\nStopping watch mode..."));
-    watcher.close();
-    process.exit(0);
-  });
+    watcher.close().then(() => process.exit(0));
+  };
 
-  // Keep the process alive
-  await new Promise(() => {});
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  // Keep the process alive - the shutdown handler will exit the process
+  await new Promise<void>(() => {
+    // This promise intentionally never resolves.
+    // The process exits via the shutdown handler when SIGINT/SIGTERM is received.
+  });
 }
 
 function getTimestamp(): string {
@@ -448,12 +456,14 @@ async function analyzeFiles(
         sourceFiles.set(file, parseResult);
       }
     } catch (error) {
+      // Log parsing errors in verbose mode for debugging
       if (verbose) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn(
-          chalk.yellow(`\nWarning: Could not parse ${progress.file}: ${error}`)
+          chalk.yellow(`\nWarning: Could not parse ${progress.file}: ${errorMessage}`)
         );
       }
-      // Continue with other files
+      // Continue with other files - parsing errors shouldn't stop the entire analysis
     }
   }
 
@@ -506,12 +516,14 @@ async function analyzeFiles(
           : [],
       });
     } catch (error) {
+      // Log analysis errors in verbose mode for debugging
       if (verbose) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn(
-          chalk.yellow(`\nWarning: Could not analyze ${pair.test.name}: ${error}`)
+          chalk.yellow(`\nWarning: Could not analyze ${pair.test.name}: ${errorMessage}`)
         );
       }
-      // Continue with other pairs
+      // Continue with other pairs - individual failures shouldn't stop the entire analysis
     }
   }
 

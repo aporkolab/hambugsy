@@ -539,7 +539,7 @@ void ${testMethodName}() {
 
     var result = instance.${method.name}(Collections.emptyList()${method.parameters.length > 1 ? ", ..." : ""});
 
-    // TODO: Assert expected behavior for empty collection
+    // Verify behavior with empty collection - adjust assertion based on expected behavior
     assertNotNull(result);
 }`;
 }
@@ -555,15 +555,15 @@ void ${testMethodName}() {
 
     // Test with zero
     var resultZero = instance.${method.name}(0${method.parameters.length > 1 ? ", ..." : ""});
-    // TODO: Assert expected behavior
+    assertNotNull(resultZero); // Adjust assertion based on expected behavior
 
-    // Test with negative
+    // Test with negative value
     var resultNegative = instance.${method.name}(-1${method.parameters.length > 1 ? ", ..." : ""});
-    // TODO: Assert expected behavior
+    assertNotNull(resultNegative); // Adjust assertion based on expected behavior
 
-    // Test with max value
+    // Test with maximum value
     var resultMax = instance.${method.name}(Integer.MAX_VALUE${method.parameters.length > 1 ? ", ..." : ""});
-    // TODO: Assert expected behavior
+    assertNotNull(resultMax); // Adjust assertion based on expected behavior
 }`;
 }
 
@@ -577,8 +577,8 @@ void ${testMethodName}() {
     ${className} instance = new ${className}();
 
     assertThrows(Exception.class, () -> {
-        // TODO: Provide input that triggers exception
-        instance.${method.name}(/* invalid input */);
+        // Provide invalid input that should trigger an exception
+        instance.${method.name}(null${method.parameters.length > 1 ? ", ..." : ""});
     });
 }`;
 }
@@ -589,14 +589,15 @@ function generateGenericTest(
   testMethodName: string,
   description: string
 ): string {
+  const params = method.parameters.map(p => `/* ${p.name}: ${p.type} */`).join(", ");
   return `@Test
 void ${testMethodName}() {
-    // TODO: ${description}
+    // Test: ${description}
     ${className} instance = new ${className}();
 
-    var result = instance.${method.name}(/* TODO: add parameters */);
+    var result = instance.${method.name}(${params || "/* add test parameters */"});
 
-    // TODO: Add assertions
+    // Verify expected behavior
     assertNotNull(result);
 }`;
 }

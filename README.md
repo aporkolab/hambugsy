@@ -13,7 +13,7 @@
   <a href="https://www.npmjs.com/package/hambugsy"><img src="https://img.shields.io/npm/dm/hambugsy" alt="npm downloads" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
   <a href="https://github.com/github/gh-copilot"><img src="https://img.shields.io/badge/Built%20with-GitHub%20Copilot%20CLI-blue" alt="Built with GitHub Copilot CLI" /></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-18%2B-green" alt="Node.js 18+" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20.19%2B-green" alt="Node.js 20.19+" /></a>
   <a href="https://github.com/APorkolab/hambugsy"><img src="https://img.shields.io/badge/tests-144%20passing-brightgreen" alt="Tests" /></a>
 </p>
 

@@ -1,15 +1,26 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFile, readFile, mkdir, rm } from "fs/promises";
 import { resolve, join } from "path";
-import { execSync } from "child_process";
+import { execSync as runShell } from "child_process";
+import { delimiter } from "path";
 
 describe("Fix Command", () => {
   const testDir = resolve(__dirname, "../temp-fix-test");
   const testFile = join(testDir, "TestService.java");
 
+  const stubBin = join(testDir, "bin");
+  const execSync: typeof runShell = (command, options) =>
+    runShell(command, {
+      ...options,
+      timeout: 15000,
+      env: { ...process.env, PATH: `${stubBin}${delimiter}${process.env.PATH ?? ""}` },
+    });
+
   beforeEach(async () => {
     // Create temp directory and test file
-    await mkdir(testDir, { recursive: true });
+    await mkdir(stubBin, { recursive: true });
+    // These CLI tests exercise local analysis without a live Copilot installation.
+    await writeFile(join(stubBin, "gh"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   });
 
   afterEach(async () => {
@@ -29,7 +40,7 @@ public class TestService {
 
       // Run fix in dry-run mode
       try {
-        execSync(`npm run dev -- fix "${testDir}" --dry-run`, {
+        execSync(`node --import tsx src/index.ts fix "${testDir}" --dry-run`, {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",
         });
@@ -54,7 +65,7 @@ public class TestService {
       await writeFile(testFile, content);
 
       // Run fix with --yes flag (should complete without prompting)
-      const result = execSync(`npm run dev -- fix "${testDir}" --yes --dry-run 2>&1`, {
+      const result = execSync(`node --import tsx src/index.ts fix "${testDir}" --yes --dry-run 2>&1`, {
         cwd: resolve(__dirname, "../.."),
         encoding: "utf-8",
         timeout: 30000,
@@ -71,7 +82,7 @@ public class TestService {
       await writeFile(testFile, content);
 
       const result = execSync(
-        `npm run dev -- fix "${testDir}" --filter=bugs --dry-run 2>&1`,
+        `node --import tsx src/index.ts fix "${testDir}" --filter=bugs --dry-run 2>&1`,
         {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",
@@ -87,7 +98,7 @@ public class TestService {
       await writeFile(testFile, content);
 
       const result = execSync(
-        `npm run dev -- fix "${testDir}" --filter=tests --dry-run 2>&1`,
+        `node --import tsx src/index.ts fix "${testDir}" --filter=tests --dry-run 2>&1`,
         {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",
@@ -103,7 +114,7 @@ public class TestService {
       await writeFile(testFile, content);
 
       const result = execSync(
-        `npm run dev -- fix "${testDir}" --filter=all --dry-run 2>&1`,
+        `node --import tsx src/index.ts fix "${testDir}" --filter=all --dry-run 2>&1`,
         {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",
@@ -117,7 +128,7 @@ public class TestService {
 
   describe("command help", () => {
     it("should display help information", () => {
-      const result = execSync(`npm run dev -- fix --help 2>&1`, {
+      const result = execSync(`node --import tsx src/index.ts fix --help 2>&1`, {
         cwd: resolve(__dirname, "../.."),
         encoding: "utf-8",
       });
@@ -140,7 +151,7 @@ public class SimpleClass {
       await writeFile(testFile, content);
 
       const result = execSync(
-        `npm run dev -- fix "${testDir}" --dry-run 2>&1`,
+        `node --import tsx src/index.ts fix "${testDir}" --dry-run 2>&1`,
         {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",
@@ -163,7 +174,7 @@ export function add(a: number, b: number): number {
       await writeFile(tsFile, content);
 
       const result = execSync(
-        `npm run dev -- fix "${testDir}" --dry-run 2>&1`,
+        `node --import tsx src/index.ts fix "${testDir}" --dry-run 2>&1`,
         {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",
@@ -184,7 +195,7 @@ def add(a, b):
       await writeFile(pyFile, content);
 
       const result = execSync(
-        `npm run dev -- fix "${testDir}" --dry-run 2>&1`,
+        `node --import tsx src/index.ts fix "${testDir}" --dry-run 2>&1`,
         {
           cwd: resolve(__dirname, "../.."),
           encoding: "utf-8",

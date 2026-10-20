@@ -47,7 +47,7 @@
     "LICENSE"
   ],
   "author": {
-    "name": "Dr. Porkol\u00e1b \u00c1d\u00e1m",
+    "name": "Dr. Porkoláb Ádám",
     "email": "ap@aporkolab.com",
     "url": "https://hambugsy.dev"
   },
@@ -80,6 +80,6 @@
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^24.15.0"
   }
 }

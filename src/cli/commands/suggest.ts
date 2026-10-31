@@ -125,15 +125,20 @@ async function runSuggest(path: string, options: SuggestOptions): Promise<number
     // 6. Output results
     const result = buildResult(filteredCoverage);
 
+    // 7. Generate test files if requested. For JSON this happens before printing so the
+    // report lists them and the file list goes to stderr instead of corrupting stdout.
+    const generate = async (log: (message: string) => void) => {
+      if (options.generate) {
+        await generateTestFiles(result, options.output ?? (await toDirectory(path)), spinner, log);
+      }
+    };
+
     if (options.format === "json") {
+      await generate(console.error);
       outputJson(result);
     } else {
       outputConsole(result, spinner);
-    }
-
-    // 7. Generate test files if requested
-    if (options.generate) {
-      await generateTestFiles(result, options.output ?? path, spinner);
+      await generate(console.log);
     }
 
     // Return 1 if there are critical missing tests
@@ -755,7 +760,8 @@ function outputJson(result: SuggestResult): void {
 async function generateTestFiles(
   result: SuggestResult,
   outputDir: string,
-  spinner: Ora
+  spinner: Ora,
+  log: (message: string) => void = console.log
 ): Promise<void> {
   if (result.coverageByMethod.length === 0) {
     return;
@@ -796,7 +802,7 @@ async function generateTestFiles(
   spinner.succeed(`Generated ${generatedFiles.length} test file(s)`);
 
   for (const file of generatedFiles) {
-    console.log(chalk.green(`  📝 ${relative(process.cwd(), file)}`));
+    log(chalk.green(`  📝 ${relative(process.cwd(), file)}`));
   }
 }
 
@@ -823,4 +829,13 @@ class ${className}GeneratedTest {
     ${tests}
 }
 `;
+}
+
+/** `suggest Foo.java -g` writes next to the file, not into `Foo.java/generated-tests`. */
+async function toDirectory(path: string): Promise<string> {
+  try {
+    return (await stat(path)).isFile() ? dirname(path) : path;
+  } catch {
+    return path;
+  }
 }

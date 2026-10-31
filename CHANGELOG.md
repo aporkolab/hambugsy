@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `--format json|github|markdown` output was corrupted by the ASCII banner and progress hints on stdout
+- `--version` reported 1.0.0 instead of the package version
+- Watch mode never re-ran (chokidar no longer supports glob patterns)
+- Results were silently dropped when analyzing a directory without git history
+- Python and Java method line numbers were off after blank lines; Python bodies could be empty
+- `fix` could edit the wrong occurrence of an assertion or every occurrence of a number on the line, and reported success when nothing was applied
+- `init` overwrote an existing `.hambugsy.yml` without `--force`
+- `suggest --format json -g` left `generatedFiles` empty and appended the file list to the JSON
+- GitHub annotations broke on multi-line messages and used absolute paths
+- VS Code extension: shell injection through file paths, unescaped HTML in the details view, wrong summary counts and missing suggestions
+
+### Changed
+- Upgraded dependencies to their latest majors (commander 15, chalk 6, chokidar 6, execa 10, glob 14, ora 9, p-queue 10, tsup 9, TypeScript 6)
+- VS Code extension: ESLint 10 flat config, @vscode/vsce 4, TypeScript 6
+- CI: actions/checkout v6, actions/upload-artifact v7, extension lint step
+
 ## [1.0.2] - 2026-01-27
 
 ### Changed

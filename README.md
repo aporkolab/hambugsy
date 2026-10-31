@@ -198,6 +198,20 @@ npm run build
 npm link
 ```
 
+### Development
+
+Requires **Node.js 24.15+** (see `.nvmrc`) and npm. The CLI is written in TypeScript 6, bundled with tsup 9 and tested with Vitest 5.
+
+```bash
+npm ci                 # Install exact dependency versions
+npm run typecheck      # Type check (also used as `npm run lint`)
+npm run build          # Bundle to dist/index.js
+npm test -- --run      # Run unit and integration tests once
+npm run dev -- analyze ./examples   # Run the CLI from source with tsx
+```
+
+No environment variables are required. The tests stub the `gh` binary, so they do not need a GitHub Copilot installation.
+
 ---
 
 ## Usage
@@ -219,7 +233,7 @@ hambugsy analyze ./src --filter=tests     # Only show outdated tests
 
 # Output formats
 hambugsy analyze ./src --format=console   # Pretty terminal output (default)
-hambugsy analyze ./src --format=json      # JSON for CI/CD integration
+hambugsy analyze ./src --format=json      # JSON for CI/CD integration (stdout is pure JSON; progress goes to stderr)
 hambugsy analyze ./src --format=github    # GitHub Actions annotations
 hambugsy analyze ./src --format=markdown  # Markdown report
 
@@ -231,7 +245,12 @@ hambugsy analyze ./src --interactive      # Confirm each step
 
 # Verbose output
 hambugsy analyze ./src --verbose
+
+# Watch mode - re-run the analysis when source files change
+hambugsy analyze ./src --watch
 ```
+
+The ASCII banner is only shown on an interactive terminal with console output, so piped and machine-readable output stays clean.
 
 ### Suggest Command
 
@@ -421,12 +440,12 @@ jobs:
   hambugsy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history for git analysis
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
 

@@ -105,6 +105,8 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
   let verdictEngine: VerdictEngine;
   let testRunner: TestRunner | null = null;
   let testResults: TestRunResult | null = null;
+  // Progress messages must not end up in machine-readable reports written to stdout
+  const log = (options.format ?? "console") === "console" ? console.log : console.error;
 
   try {
     // 1. Check GitHub Copilot CLI
@@ -124,7 +126,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
         return 1;
       }
       spinner.warn("GitHub Copilot CLI not found - analysis will be limited");
-      console.log(
+      log(
         chalk.yellow(
           "\nTo enable AI-powered analysis, install GitHub Copilot CLI:\n" +
             "  gh extension install github/gh-copilot\n"
@@ -147,11 +149,11 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
         );
 
         if (testResults.failed > 0) {
-          console.log(chalk.yellow(`\n  Found ${testResults.failed} failing test(s) to analyze\n`));
+          log(chalk.yellow(`\n  Found ${testResults.failed} failing test(s) to analyze\n`));
         }
       } catch (error) {
         spinner.warn(`Could not run tests: ${error instanceof Error ? error.message : error}`);
-        console.log(chalk.gray("  Falling back to static analysis\n"));
+        log(chalk.gray("  Falling back to static analysis\n"));
       }
     }
 
@@ -165,7 +167,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
 
     if (files.length === 0) {
       spinner.warn("No source files found (Java, TypeScript, JavaScript, Python, Go, Rust, C#)");
-      console.log(chalk.gray(`Searched in: ${resolve(path)}`));
+      log(chalk.gray(`Searched in: ${resolve(path)}`));
       return 0;
     }
 
@@ -175,7 +177,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     if (options.interactive) {
       const proceed = await confirm("Proceed with analysis? [Y/n] ");
       if (!proceed) {
-        console.log(chalk.yellow("Analysis cancelled."));
+        log(chalk.yellow("Analysis cancelled."));
         return 0;
       }
     }

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import ora from "ora";
 import chalk from "chalk";
-import { writeFile } from "fs/promises";
+import { access, writeFile } from "fs/promises";
 import { join } from "path";
 import YAML from "yaml";
 import type { HambugsyConfig, SupportedLanguage } from "../../core/types.js";
@@ -31,6 +31,12 @@ export const initCommand = new Command("init")
       const yamlContent = YAML.stringify(config);
       const configPath = join(process.cwd(), ".hambugsy.yml");
 
+      if (!options.force && (await fileExists(configPath))) {
+        spinner.fail(`${configPath} already exists`);
+        console.error(chalk.yellow("Use --force to overwrite the existing configuration."));
+        process.exit(1);
+      }
+
       await writeFile(configPath, yamlContent, "utf-8");
 
       spinner.succeed("Hambugsy initialized");
@@ -43,3 +49,12 @@ export const initCommand = new Command("init")
       process.exit(1);
     }
   });
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}

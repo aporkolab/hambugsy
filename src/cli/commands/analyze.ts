@@ -108,6 +108,12 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
   // Progress messages must not end up in machine-readable reports written to stdout
   const log = (options.format ?? "console") === "console" ? console.log : console.error;
 
+  const confidenceThreshold = Number(options.confidence ?? "0.5");
+  if (Number.isNaN(confidenceThreshold) || confidenceThreshold < 0 || confidenceThreshold > 1) {
+    console.error(chalk.red(`Invalid --confidence value "${options.confidence}": expected a number between 0 and 1`));
+    return 1;
+  }
+
   try {
     // 1. Check GitHub Copilot CLI
     spinner.start("Checking GitHub Copilot CLI...");
@@ -198,7 +204,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     const filteredResults = filterResults(
       results,
       options.filter ?? "all",
-      parseFloat(options.confidence ?? "0.5")
+      confidenceThreshold
     );
 
     // 6. Output results

@@ -28,4 +28,4 @@ program.addCommand(suggestCommand);
 program.addCommand(initCommand);
 program.addCommand(fixCommand);
 
-program.parse();
+await program.parseAsync();

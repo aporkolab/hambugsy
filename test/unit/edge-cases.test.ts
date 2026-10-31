@@ -3,7 +3,7 @@ import { TypeScriptParser } from "../../src/parser/typescript/parser.js";
 import { JavaParser } from "../../src/parser/java/parser.js";
 import { PythonParser } from "../../src/parser/python/parser.js";
 import { resolve } from "path";
-import { writeFileSync, unlinkSync, mkdirSync, rmdirSync } from "fs";
+import { writeFileSync, unlinkSync, mkdirSync, rmSync } from "fs";
 
 const tmpDir = resolve(__dirname, "../fixtures/tmp");
 
@@ -321,7 +321,7 @@ public class Outer {
   describe("Cleanup", () => {
     it("should clean up temp directory", () => {
       try {
-        rmdirSync(tmpDir, { recursive: true });
+        rmSync(tmpDir, { recursive: true, force: true });
       } catch {
         // Directory may not exist or not be empty
       }

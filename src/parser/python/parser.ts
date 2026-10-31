@@ -89,7 +89,7 @@ export class PythonParser {
 
     // Pattern for Python function/method definitions
     // Matches: def name(params): or async def name(params):
-    const defPattern = /^(\s*)((?:@\w+(?:\([^)]*\))?\s*\n\s*)*)(async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*([^\s:]+))?\s*:/gm;
+    const defPattern = /^([ \t]*)((?:@\w+(?:\([^)]*\))?\s*\n\s*)*)(async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*([^\s:]+))?\s*:/gm;
 
     let match;
     while ((match = defPattern.exec(this.content)) !== null) {
@@ -101,12 +101,9 @@ export class PythonParser {
       const returnType = match[6] ?? "None";
 
       const startIndex = match.index;
-      // The match.index points to the newline before the line, so add 1
-      const matchLineNumber = this.getLineNumber(startIndex) + 1;
-
-      // Account for decorator lines to get the actual def line
-      const decoratorLines = (decoratorsBlock.match(/\n/g) || []).length;
-      const lineNumber = matchLineNumber + decoratorLines;
+      // Report the line of the `def` keyword itself (decorators come before it)
+      const defOffset = match[0].search(/(?:async\s+)?def\s/);
+      const lineNumber = this.getLineNumber(startIndex + defOffset);
 
       // Extract decorators
       const decorators = this.extractDecorators(decoratorsBlock);

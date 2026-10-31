@@ -64,12 +64,13 @@
 
 ### Manual Installation
 
-1. Build the extension:
+1. Build the extension (Node.js 24 recommended, VS Code 1.96+ to run it):
    ```bash
    cd vscode-extension
-   npm install
+   npm ci
+   npm run lint      # ESLint 10 flat config (eslint.config.mjs)
    npm run compile
-   npm run package
+   npm run package   # Produces hambugsy-vscode-<version>.vsix via @vscode/vsce
    ```
 
 2. In VS Code, go to Extensions > ... > Install from VSIX
@@ -98,6 +99,10 @@ When you open a test file, you'll see CodeLens annotations above each test metho
 - **Results Tree** - Browse results in the "Hambugsy Results" view in the Explorer sidebar
 - **Output Channel** - Detailed analysis output in the "Hambugsy" output channel
 - **Webview Panel** - Click on a result to see detailed analysis in a rich HTML view
+
+## How It Talks to the CLI
+
+The extension runs `npx hambugsy <command> --format=json` from the workspace folder of the analyzed file. Arguments are passed without a shell, a non-zero exit code with a valid report (e.g. code bugs found) is shown as results rather than an error, and all report text in the details panel is HTML-escaped.
 
 ## Links
 

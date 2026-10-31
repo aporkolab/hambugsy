@@ -6,9 +6,11 @@ import { resolve, relative } from "path";
 import { readFileSync } from "fs";
 import { createInterface } from "readline";
 import chokidar from "chokidar";
+import { createWatchFilter } from "../watch-filter.js";
 import { ConsoleReporter } from "../output/console.js";
 import { JsonOutput } from "../output/json.js";
 import { MarkdownReporter } from "../output/markdown.js";
+import { formatGitHubAnnotations } from "../output/github.js";
 import { JavaParser } from "../../parser/java/parser.js";
 import { TypeScriptParser } from "../../parser/typescript/parser.js";
 import { PythonParser } from "../../parser/python/parser.js";
@@ -105,6 +107,14 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
   let verdictEngine: VerdictEngine;
   let testRunner: TestRunner | null = null;
   let testResults: TestRunResult | null = null;
+  // Progress messages must not end up in machine-readable reports written to stdout
+  const log = (options.format ?? "console") === "console" ? console.log : console.error;
+
+  const confidenceThreshold = Number(options.confidence ?? "0.5");
+  if (Number.isNaN(confidenceThreshold) || confidenceThreshold < 0 || confidenceThreshold > 1) {
+    console.error(chalk.red(`Invalid --confidence value "${options.confidence}": expected a number between 0 and 1`));
+    return 1;
+  }
 
   try {
     // 1. Check GitHub Copilot CLI
@@ -124,7 +134,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
         return 1;
       }
       spinner.warn("GitHub Copilot CLI not found - analysis will be limited");
-      console.log(
+      log(
         chalk.yellow(
           "\nTo enable AI-powered analysis, install GitHub Copilot CLI:\n" +
             "  gh extension install github/gh-copilot\n"
@@ -147,11 +157,11 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
         );
 
         if (testResults.failed > 0) {
-          console.log(chalk.yellow(`\n  Found ${testResults.failed} failing test(s) to analyze\n`));
+          log(chalk.yellow(`\n  Found ${testResults.failed} failing test(s) to analyze\n`));
         }
       } catch (error) {
         spinner.warn(`Could not run tests: ${error instanceof Error ? error.message : error}`);
-        console.log(chalk.gray("  Falling back to static analysis\n"));
+        log(chalk.gray("  Falling back to static analysis\n"));
       }
     }
 
@@ -165,7 +175,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
 
     if (files.length === 0) {
       spinner.warn("No source files found (Java, TypeScript, JavaScript, Python, Go, Rust, C#)");
-      console.log(chalk.gray(`Searched in: ${resolve(path)}`));
+      log(chalk.gray(`Searched in: ${resolve(path)}`));
       return 0;
     }
 
@@ -175,7 +185,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     if (options.interactive) {
       const proceed = await confirm("Proceed with analysis? [Y/n] ");
       if (!proceed) {
-        console.log(chalk.yellow("Analysis cancelled."));
+        log(chalk.yellow("Analysis cancelled."));
         return 0;
       }
     }
@@ -196,7 +206,7 @@ async function runAnalysis(path: string, options: AnalyzeOptions): Promise<numbe
     const filteredResults = filterResults(
       results,
       options.filter ?? "all",
-      parseFloat(options.confidence ?? "0.5")
+      confidenceThreshold
     );
 
     // 6. Output results
@@ -251,27 +261,11 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
   console.log(chalk.gray(`\n[${getTimestamp()}] Watching for changes...`));
 
   // Set up file watcher
-  const watcher = chokidar.watch(
-    ["**/*.java", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.rs", "**/*.cs"],
-    {
-      cwd: resolvedPath,
-      ignored: [
-        "**/node_modules/**",
-        "**/build/**",
-        "**/target/**",
-        "**/out/**",
-        "**/dist/**",
-        "**/.git/**",
-        "**/__pycache__/**",
-        "**/*.d.ts",
-        "**/vendor/**",
-        "**/bin/**",
-        "**/obj/**",
-      ],
-      ignoreInitial: true,
-      persistent: true,
-    }
-  );
+  const watcher = chokidar.watch(resolvedPath, {
+    ignored: createWatchFilter(resolvedPath),
+    ignoreInitial: true,
+    persistent: true,
+  });
 
   const runDebouncedAnalysis = async () => {
     if (isAnalyzing) {
@@ -296,17 +290,17 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
   };
 
   watcher.on("change", (filePath) => {
-    console.log(chalk.yellow(`\n  File changed: ${filePath}`));
+    console.log(chalk.yellow(`\n  File changed: ${relative(resolvedPath, filePath)}`));
     runDebouncedAnalysis();
   });
 
   watcher.on("add", (filePath) => {
-    console.log(chalk.green(`\n  File added: ${filePath}`));
+    console.log(chalk.green(`\n  File added: ${relative(resolvedPath, filePath)}`));
     runDebouncedAnalysis();
   });
 
   watcher.on("unlink", (filePath) => {
-    console.log(chalk.red(`\n  File removed: ${filePath}`));
+    console.log(chalk.red(`\n  File removed: ${relative(resolvedPath, filePath)}`));
     runDebouncedAnalysis();
   });
 
@@ -1143,22 +1137,7 @@ async function confirm(question: string): Promise<boolean> {
 }
 
 function outputGitHubActions(results: DiagnosticResult[]): void {
-  // GitHub Actions workflow commands
-  for (const result of results) {
-    const level = result.verdict.type === "CODE_BUG" ? "error" : "warning";
-    const file = result.testFile;
-
-    // ::error file={name},line={line}::{message}
-    console.log(
-      `::${level} file=${file}::${result.verdict.type}: ${result.reasoning}`
-    );
+  for (const line of formatGitHubAnnotations(results)) {
+    console.log(line);
   }
-
-  // Summary
-  const bugs = results.filter((r) => r.verdict.type === "CODE_BUG").length;
-  const testIssues = results.filter(
-    (r) => r.verdict.type === "OUTDATED_TEST" || r.verdict.type === "FLAKY_TEST"
-  ).length;
-
-  console.log(`::notice::Hambugsy found ${bugs} code bug(s) and ${testIssues} test issue(s)`);
 }

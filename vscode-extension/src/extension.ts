@@ -1,8 +1,13 @@
 import * as vscode from "vscode";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import * as path from "path";
+import {
+  AnalysisSummary,
+  escapeHtml,
+  extractSuggestions,
+  parseCliJson,
+  runHambugsy,
+  summarizeResults,
+} from "./cli";
 
 // ============================================================================
 // Types
@@ -29,13 +34,12 @@ interface DiagnosticResult {
 
 interface AnalysisOutput {
   results: DiagnosticResult[];
-  summary: {
-    codeBugs: number;
-    outdatedTests: number;
-    flakyTests: number;
-    environmentIssues: number;
-    passed: number;
-  };
+}
+
+/** Runs the CLI from the workspace folder that contains the target (or its directory). */
+function cwdFor(targetPath: string): string {
+  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(targetPath));
+  return folder?.uri.fsPath ?? path.dirname(targetPath);
 }
 
 // ============================================================================
@@ -158,13 +162,14 @@ async function suggestTests() {
   statusBarItem.text = "$(sync~spin) Analyzing...";
 
   try {
-    const { stdout } = await execAsync(`npx hambugsy suggest "${filePath}" --format=json`);
-    const output = JSON.parse(stdout);
+    const suggestions = extractSuggestions(
+      parseCliJson(await runHambugsy(["suggest", filePath, "--format=json"], cwdFor(filePath)))
+    );
 
     outputChannel.clear();
     outputChannel.appendLine("=== Missing Test Suggestions ===\n");
 
-    for (const suggestion of output.suggestions || []) {
+    for (const suggestion of suggestions) {
       outputChannel.appendLine(`${suggestion.priority} - ${suggestion.methodName}`);
       outputChannel.appendLine(`  File: ${suggestion.filePath}:${suggestion.lineNumber}`);
       outputChannel.appendLine(`  Rationale: ${suggestion.rationale}`);
@@ -176,7 +181,7 @@ async function suggestTests() {
 
     outputChannel.show();
     vscode.window.showInformationMessage(
-      `Hambugsy found ${output.suggestions?.length || 0} missing test suggestions`
+      `Hambugsy found ${suggestions.length} missing test suggestions`
     );
   } catch (error) {
     handleError(error);
@@ -198,18 +203,24 @@ async function fixIssues() {
   statusBarItem.text = "$(sync~spin) Checking fixes...";
 
   try {
-    const { stdout } = await execAsync(`npx hambugsy fix "${folder}" --dry-run`);
+    const dryRun = await runHambugsy(["fix", folder, "--dry-run"], folder);
+    if (dryRun.exitCode !== 0) {
+      throw new Error(dryRun.stderr.trim() || `hambugsy fix --dry-run exited with code ${dryRun.exitCode}`);
+    }
 
     const result = await vscode.window.showInformationMessage(
       "Hambugsy found fixable issues. Apply fixes?",
-      { modal: true, detail: stdout },
+      { modal: true, detail: dryRun.stdout },
       "Apply Fixes",
       "Cancel"
     );
 
     if (result === "Apply Fixes") {
       statusBarItem.text = "$(sync~spin) Applying fixes...";
-      await execAsync(`npx hambugsy fix "${folder}" --yes`);
+      const applied = await runHambugsy(["fix", folder, "--yes"], folder);
+      if (applied.exitCode !== 0) {
+        throw new Error(applied.stderr.trim() || `hambugsy fix exited with code ${applied.exitCode}`);
+      }
       vscode.window.showInformationMessage("Fixes applied successfully!");
     }
   } catch (error) {
@@ -229,8 +240,9 @@ async function analyzeFile(filePath: string) {
   outputChannel.appendLine(`Analyzing: ${filePath}\n`);
 
   try {
-    const { stdout } = await execAsync(`npx hambugsy analyze "${filePath}" --format=json`);
-    const output: AnalysisOutput = JSON.parse(stdout);
+    const output = parseCliJson<AnalysisOutput>(
+      await runHambugsy(["analyze", filePath, "--format=json"], cwdFor(filePath))
+    );
 
     // Clear previous diagnostics
     diagnosticCollection.clear();
@@ -239,7 +251,6 @@ async function analyzeFile(filePath: string) {
     const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
 
     for (const result of output.results) {
-      const uri = vscode.Uri.file(result.testFile);
       const diagnostics = diagnosticsMap.get(result.testFile) || [];
 
       const severity = getSeverity(result.verdict.type);
@@ -266,7 +277,7 @@ async function analyzeFile(filePath: string) {
     resultsProvider.setResults(output.results);
 
     // Show summary
-    const { summary } = output;
+    const summary: AnalysisSummary = summarizeResults(output.results);
     outputChannel.appendLine("=== Analysis Summary ===");
     outputChannel.appendLine(`Code Bugs: ${summary.codeBugs}`);
     outputChannel.appendLine(`Outdated Tests: ${summary.outdatedTests}`);
@@ -404,6 +415,7 @@ async function showResultDetails(result: DiagnosticResult) {
     <!DOCTYPE html>
     <html>
     <head>
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
       <style>
         body { font-family: var(--vscode-font-family); padding: 20px; }
         h1 { color: var(--vscode-foreground); }
@@ -431,27 +443,27 @@ async function showResultDetails(result: DiagnosticResult) {
       </style>
     </head>
     <body>
-      <h1>${result.testName}</h1>
-      <p><strong>File:</strong> ${result.testFile}</p>
+      <h1>${escapeHtml(result.testName)}</h1>
+      <p><strong>File:</strong> ${escapeHtml(result.testFile)}</p>
 
-      <div class="verdict ${result.verdict.type}">
-        <h2>${result.verdict.type}</h2>
-        <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(0)}%</p>
-        <p><strong>Reason:</strong> ${result.verdict.reason}</p>
-        <p>${result.verdict.explanation}</p>
+      <div class="verdict ${escapeHtml(result.verdict.type)}">
+        <h2>${escapeHtml(result.verdict.type)}</h2>
+        <p><strong>Confidence:</strong> ${(Number(result.confidence) * 100).toFixed(0)}%</p>
+        <p><strong>Reason:</strong> ${escapeHtml(result.verdict.reason)}</p>
+        <p>${escapeHtml(result.verdict.explanation)}</p>
       </div>
 
       <h3>Recommendation</h3>
-      <p>${result.verdict.recommendation.description}</p>
+      <p>${escapeHtml(result.verdict.recommendation.description)}</p>
 
       ${result.verdict.recommendation.suggestedFix ? `
         <h4>Suggested Fix:</h4>
-        <pre><code>${result.verdict.recommendation.suggestedFix}</code></pre>
+        <pre><code>${escapeHtml(result.verdict.recommendation.suggestedFix)}</code></pre>
       ` : ""}
 
       ${result.suggestions.length > 0 ? `
         <h3>Additional Suggestions</h3>
-        ${result.suggestions.map(s => `<div class="suggestion">${s}</div>`).join("")}
+        ${result.suggestions.map(s => `<div class="suggestion">${escapeHtml(s)}</div>`).join("")}
       ` : ""}
     </body>
     </html>

@@ -95,7 +95,9 @@ export class JavaParser {
       const parameters = match[6] ?? "";
 
       const startIndex = match.index;
-      const lineNumber = this.getLineNumber(startIndex);
+      // The pattern may start with whitespace spanning previous lines; count from the first token
+      const leadingWhitespace = match[0].length - match[0].trimStart().length;
+      const lineNumber = this.getLineNumber(startIndex + leadingWhitespace);
 
       // Find the method body by matching braces
       const bodyStartIndex = this.content.indexOf("{", startIndex);

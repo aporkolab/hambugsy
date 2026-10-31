@@ -279,7 +279,7 @@ export class GitService {
       /\bupdate\s+policy\b/,
       /\bupdate\s+logic\b/,
       /\bupdate\s+behavior\b/,
-      /[A-Z]{2,}-\d+/, // JIRA-123, ABC-456, etc.
+      /\b[a-z]{2,}-\d+\b/, // JIRA-123, ABC-456, etc. (message is lowercased above)
       /^perf[:\s(]/,
       /^style[:\s(]/,
       /^docs[:\s(]/,
@@ -320,8 +320,13 @@ export class GitService {
     const file2Date = history2[0]?.date ?? null;
 
     let moreRecent = "";
-    if (file1Date && file2Date) {
-      moreRecent = file1Date > file2Date ? file1Path : file2Path;
+    if (file1Path === file2Path) {
+      // Same file (e.g. Rust inline tests): neither side is newer
+      moreRecent = "";
+    } else if (file1Date && file2Date) {
+      // Equal timestamps (test and code changed in one commit) mean neither is newer
+      const diff = file1Date.getTime() - file2Date.getTime();
+      moreRecent = diff > 0 ? file1Path : diff < 0 ? file2Path : "";
     } else if (file1Date) {
       moreRecent = file1Path;
     } else if (file2Date) {

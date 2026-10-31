@@ -13,6 +13,7 @@ import { CopilotBridge, getCopilotBridge } from "../../services/copilot.js";
 import { GitService, getGitService } from "../../services/git.js";
 import { createVerdictEngine } from "../../verdict/engine.js";
 import { detectDivergenceAdvanced } from "../../analysis/divergence-detector.js";
+import { applyLineFix, replaceExpectedValue } from "../fix-utils.js";
 import type { DiagnosticResult, AnalysisResult, TestSourcePair, TestCase, SourceMethod, Expectation, Behavior } from "../../core/types.js";
 
 // ============================================================================
@@ -125,6 +126,12 @@ async function runFix(path: string, options: FixOptions): Promise<number> {
     // 7. Apply fixes
     spinner.start("Applying fixes...");
     const appliedCount = await applyFixes(suggestions);
+    if (appliedCount < suggestions.length) {
+      spinner.warn(`Applied ${appliedCount} of ${suggestions.length} fix(es)`);
+      console.log(chalk.gray("Please review the changes and run your tests."));
+      return 1;
+    }
+
     spinner.succeed(`Applied ${appliedCount} fix(es)`);
 
     console.log();
@@ -493,9 +500,7 @@ async function generateFixSuggestions(
           ) {
             const originalLine = line.trim();
             // Replace expected with actual (since code is correct and test is outdated)
-            const suggestedLine = originalLine
-              .replace(new RegExp(`${expectedValue}\\.0`, "g"), `${actualValue}.0`)
-              .replace(new RegExp(`\\b${expectedValue}\\b`, "g"), actualValue);
+            const suggestedLine = replaceExpectedValue(originalLine, expectedValue, actualValue);
 
             if (originalLine !== suggestedLine) {
               suggestions.push({
@@ -537,9 +542,7 @@ async function generateFixSuggestions(
             (line.includes(expectedValue) || line.includes(`${expectedValue}.0`))
           ) {
             const originalLine = line.trim();
-            const suggestedLine = originalLine
-              .replace(new RegExp(`${expectedValue}\\.0`, "g"), `${actualValue}.0`)
-              .replace(new RegExp(`\\b${expectedValue}\\b`, "g"), actualValue);
+            const suggestedLine = replaceExpectedValue(originalLine, expectedValue, actualValue);
 
             if (originalLine !== suggestedLine) {
               suggestions.push({
@@ -582,9 +585,7 @@ async function generateFixSuggestions(
             (line.includes(oldValue) || line.includes(`${oldValue}.0`))
           ) {
             const originalLine = line.trim();
-            const suggestedLine = originalLine
-              .replace(new RegExp(`${oldValue}\\.0`, "g"), `${newValue}.0`)
-              .replace(new RegExp(`\\b${oldValue}\\b`, "g"), newValue);
+            const suggestedLine = replaceExpectedValue(originalLine, oldValue, newValue);
 
             if (originalLine !== suggestedLine) {
               suggestions.push({
@@ -629,8 +630,9 @@ async function applyFixes(suggestions: FixSuggestion[]): Promise<number> {
       let modified = false;
 
       for (const suggestion of fileSuggestions) {
-        if (content.includes(suggestion.originalLine)) {
-          content = content.replace(suggestion.originalLine, suggestion.suggestedLine);
+        const updated = applyLineFix(content, suggestion);
+        if (updated !== null) {
+          content = updated;
           modified = true;
           appliedCount++;
         }
@@ -639,8 +641,10 @@ async function applyFixes(suggestions: FixSuggestion[]): Promise<number> {
       if (modified) {
         await writeFile(filePath, content, "utf-8");
       }
-    } catch {
-      // Skip files that can't be modified
+    } catch (error) {
+      console.error(
+        chalk.yellow(`Could not update ${filePath}: ${error instanceof Error ? error.message : error}`)
+      );
     }
   }
 

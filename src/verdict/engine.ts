@@ -53,9 +53,15 @@ export class VerdictEngine {
 
     // 2. Compare modification times
     const { testFile, sourceFile } = this.extractFiles(analysis);
-    const comparison = await this.git.compareLastModification(testFile, sourceFile);
+    let codeIsNewer = false;
+    try {
+      const comparison = await this.git.compareLastModification(testFile, sourceFile);
+      codeIsNewer = comparison.moreRecent === sourceFile;
+    } catch {
+      // No git history available (not a repository, untracked files): the change order is
+      // unknown, so fall through to the default verdict instead of dropping the result
+    }
 
-    const codeIsNewer = comparison.moreRecent === sourceFile;
     const lastCodeCommit = analysis.gitContext.lastCodeChange;
 
     if (codeIsNewer && lastCodeCommit) {

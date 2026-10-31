@@ -311,7 +311,7 @@ export class CopilotBridge {
       expectedOutputs: this.extractListItems(response, /outputs?:?\s*([^\n]+)/gi),
       expectedExceptions: this.extractListItems(
         response,
-        /exceptions?|throws?:?\s*([^\n]+)/gi
+        /(?:exceptions?|throws?):?\s*([^\n]+)/gi
       ),
     };
   }
@@ -323,7 +323,7 @@ export class CopilotBridge {
       returnBehavior: this.extractFirstMatch(response, /returns?:?\s*([^\n]+)/i) ?? "",
       errorConditions: this.extractListItems(
         response,
-        /errors?|exceptions?:?\s*([^\n]+)/gi
+        /(?:errors?|exceptions?):?\s*([^\n]+)/gi
       ),
     };
   }

@@ -35,7 +35,8 @@ const MAX_BUFFER = 64 * 1024 * 1024;
  * Builds the command and arguments for invoking the CLI through npx.
  * Arguments are passed as an array so file paths are never interpreted by a shell.
  * Windows needs a shell to launch npx.cmd, so every argument is double-quoted there
- * (`"` cannot occur in Windows file names, and cmd metacharacters are literal inside quotes).
+ * Reject expansion and quote characters before invoking cmd: environment-variable
+ * expansion still happens inside double quotes and could change the command.
  */
 export function buildCliInvocation(
   args: string[],
@@ -43,6 +44,9 @@ export function buildCliInvocation(
 ): { command: string; args: string[]; shell: boolean } {
   const fullArgs = ["hambugsy", ...args];
   if (platform === "win32") {
+    if (fullArgs.some((arg) => /[%!"\r\n]/.test(arg))) {
+      throw new Error("Windows CLI paths must not contain percent signs, exclamation marks, quotes or line breaks.");
+    }
     return { command: "npx.cmd", args: fullArgs.map((a) => `"${a}"`), shell: true };
   }
   return { command: "npx", args: fullArgs, shell: false };

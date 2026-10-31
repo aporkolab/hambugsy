@@ -12,9 +12,9 @@ let workDir: string;
 
 /** Runs the CLI from source without a live Copilot installation (`gh` stub exits 1). */
 function cli(args: string[], cwd = ROOT) {
-  const tsx = join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
-  return spawnSync(tsx, [join(ROOT, "src/index.ts"), ...args], {
-    shell: process.platform === "win32",
+  const tsx = join(ROOT, "node_modules", "tsx", "dist", "loader.mjs");
+  return spawnSync(process.execPath, ["--import", tsx, join(ROOT, "src/index.ts"), ...args], {
+    shell: false,
     cwd,
     encoding: "utf-8",
     timeout: 30000,

@@ -25,6 +25,14 @@ describe("VS Code extension CLI bridge", () => {
       expect(invocation.shell).toBe(true);
       expect(invocation.args).toEqual(['"hambugsy"', '"analyze"', '"C:\\My Project & Co"']);
     });
+
+    it.each(["%TEMP%", "!TEMP!", 'a"b', "a\rb", "a\nb"])(
+      "rejects cmd expansion or quote characters on Windows: %s",
+      (part) => {
+        expect(() => buildCliInvocation(["analyze", `C:\\${part}\\test.java`], "win32"))
+          .toThrow(/Windows CLI paths/);
+      }
+    );
   });
 
   describe("parseCliJson", () => {

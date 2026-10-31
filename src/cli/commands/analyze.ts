@@ -6,9 +6,11 @@ import { resolve, relative } from "path";
 import { readFileSync } from "fs";
 import { createInterface } from "readline";
 import chokidar from "chokidar";
+import { createWatchFilter } from "../watch-filter.js";
 import { ConsoleReporter } from "../output/console.js";
 import { JsonOutput } from "../output/json.js";
 import { MarkdownReporter } from "../output/markdown.js";
+import { formatGitHubAnnotations } from "../output/github.js";
 import { JavaParser } from "../../parser/java/parser.js";
 import { TypeScriptParser } from "../../parser/typescript/parser.js";
 import { PythonParser } from "../../parser/python/parser.js";
@@ -259,27 +261,11 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
   console.log(chalk.gray(`\n[${getTimestamp()}] Watching for changes...`));
 
   // Set up file watcher
-  const watcher = chokidar.watch(
-    ["**/*.java", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.rs", "**/*.cs"],
-    {
-      cwd: resolvedPath,
-      ignored: [
-        "**/node_modules/**",
-        "**/build/**",
-        "**/target/**",
-        "**/out/**",
-        "**/dist/**",
-        "**/.git/**",
-        "**/__pycache__/**",
-        "**/*.d.ts",
-        "**/vendor/**",
-        "**/bin/**",
-        "**/obj/**",
-      ],
-      ignoreInitial: true,
-      persistent: true,
-    }
-  );
+  const watcher = chokidar.watch(resolvedPath, {
+    ignored: createWatchFilter(resolvedPath),
+    ignoreInitial: true,
+    persistent: true,
+  });
 
   const runDebouncedAnalysis = async () => {
     if (isAnalyzing) {
@@ -304,17 +290,17 @@ async function runWatchMode(path: string, options: AnalyzeOptions): Promise<void
   };
 
   watcher.on("change", (filePath) => {
-    console.log(chalk.yellow(`\n  File changed: ${filePath}`));
+    console.log(chalk.yellow(`\n  File changed: ${relative(resolvedPath, filePath)}`));
     runDebouncedAnalysis();
   });
 
   watcher.on("add", (filePath) => {
-    console.log(chalk.green(`\n  File added: ${filePath}`));
+    console.log(chalk.green(`\n  File added: ${relative(resolvedPath, filePath)}`));
     runDebouncedAnalysis();
   });
 
   watcher.on("unlink", (filePath) => {
-    console.log(chalk.red(`\n  File removed: ${filePath}`));
+    console.log(chalk.red(`\n  File removed: ${relative(resolvedPath, filePath)}`));
     runDebouncedAnalysis();
   });
 
@@ -1151,22 +1137,7 @@ async function confirm(question: string): Promise<boolean> {
 }
 
 function outputGitHubActions(results: DiagnosticResult[]): void {
-  // GitHub Actions workflow commands
-  for (const result of results) {
-    const level = result.verdict.type === "CODE_BUG" ? "error" : "warning";
-    const file = result.testFile;
-
-    // ::error file={name},line={line}::{message}
-    console.log(
-      `::${level} file=${file}::${result.verdict.type}: ${result.reasoning}`
-    );
+  for (const line of formatGitHubAnnotations(results)) {
+    console.log(line);
   }
-
-  // Summary
-  const bugs = results.filter((r) => r.verdict.type === "CODE_BUG").length;
-  const testIssues = results.filter(
-    (r) => r.verdict.type === "OUTDATED_TEST" || r.verdict.type === "FLAKY_TEST"
-  ).length;
-
-  console.log(`::notice::Hambugsy found ${bugs} code bug(s) and ${testIssues} test issue(s)`);
 }
